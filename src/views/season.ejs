@@ -33,7 +33,7 @@
       <a href="/logout">logout</a>
     </div>
   </nav>
-  
+
   <main class="main">
     <div class="controls">
       <div class="controls__tabs">
@@ -51,14 +51,48 @@
         </select>
       </div>
     </div>
-    
+
     <div class="card-grid">
       <% for (const anime of animeList) { %>
         <%- include('partials/card', { anime, userStatus: userStatuses.get(anime.mal_id), langPref: user.langPref }) %>
       <% } %>
     </div>
   </main>
-  
+
+  <!-- Detail Modal -->
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal" id="animeModal" role="dialog" aria-modal="true">
+      <div class="modal__header">
+        <img class="modal__poster" id="modalPoster" src="" alt="">
+        <div class="modal__info">
+          <h2 class="modal__title" id="modalTitle"></h2>
+          <div class="modal__titles">
+            <span class="modal__title-jp" id="modalTitleJp"></span>
+            <span class="modal__title-ru" id="modalTitleRu"></span>
+          </div>
+          <div class="modal__badges">
+            <div class="modal__countdown" id="modalCountdown"></div>
+            <span class="modal__status" id="modalStatus"></span>
+            <span class="modal__episodes" id="modalEpisodes"></span>
+          </div>
+        </div>
+        <button class="modal__close" id="modalClose" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal__body">
+        <div id="modalSynopsisEn" class="modal__synopsis modal__synopsis-en"></div>
+        <div id="modalSynopsisRu" class="modal__synopsis modal__synopsis-ru"></div>
+        <div id="modalGenres" class="modal__genres"></div>
+        <div class="modal__scores" id="modalScores"></div>
+        <div id="modalRelated" class="modal__related"></div>
+      </div>
+      <div class="modal__actions" id="modalActions">
+        <button class="btn btn--follow" data-status="following">♡ Follow</button>
+        <button class="btn btn--jellyfin" data-status="in_jellyfin">📦 Jellyfin</button>
+        <button class="btn btn--watched" data-status="watched">✓ Watched</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/js/app.js"></script>
 </body>
 </html>

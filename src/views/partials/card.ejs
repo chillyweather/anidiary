@@ -2,22 +2,23 @@
   const title = langPref === 'jp' ? (anime.title_jp || anime.title_en) :
                 langPref === 'ru' ? (anime.title_ru || anime.title_en) :
                 anime.title_en;
-  const synopsis = langPref === 'ru' ? (anime.synopsis_ru || anime.synopsis_en) :
-                   anime.synopsis_en;
-  const synopsisShort = synopsis ? synopsis.substring(0, 120) + (synopsis.length > 120 ? '…' : '') : '';
+  const synopsisEn = anime.synopsis_en || '';
+  const synopsisRu = anime.synopsis_ru || '';
+  const synopsis = langPref === 'ru'
+    ? (synopsisRu || synopsisEn)
+    : (synopsisEn || synopsisRu);
+  const synopsisShort = synopsis
+    ? synopsis.substring(0, 120) + (synopsis.length > 120 ? '…' : '')
+    : '';
 
-  let countdownDisplay = '';
   let countdownClass = '';
   if (anime.next_ep_at && anime.next_ep_at > Math.floor(Date.now() / 1000)) {
     countdownClass = '';
   } else if (anime.airing_status === 'Finished Airing') {
-    countdownDisplay = 'Released';
     countdownClass = 'countdown--released';
   } else if (anime.airing_status === 'Not yet aired') {
-    countdownDisplay = 'Not aired';
     countdownClass = 'countdown--not-aired';
   } else {
-    countdownDisplay = 'TBA';
     countdownClass = 'countdown--tba';
   }
 
@@ -26,9 +27,54 @@
   if (userStatus === 'in_jellyfin') cardStatusClasses.push('card--jellyfin');
   if (userStatus === 'watched') cardStatusClasses.push('card--watched');
   const cardClass = cardStatusClasses.length > 0 ? cardStatusClasses.join(' ') : '';
+
+  let countdownBadge = '';
+  if (anime.next_ep_at && anime.next_ep_at > Math.floor(Date.now() / 1000)) {
+    countdownBadge = '';
+  } else if (anime.airing_status === 'Finished Airing') {
+    countdownBadge = 'Released';
+  } else if (anime.airing_status === 'Not yet aired') {
+    countdownBadge = 'Not aired';
+  } else {
+    countdownBadge = 'TBA';
+  }
+
+  const genres = JSON.parse(anime.genres || '[]');
+
+  const related = anime.related ? JSON.parse(anime.related) : [];
+
+  const modalData = {
+    mal_id: anime.mal_id,
+    title_en: anime.title_en,
+    title_jp: anime.title_jp,
+    title_ru: anime.title_ru,
+    synopsis_en: synopsisEn,
+    synopsis_ru: synopsisRu,
+    poster_url: anime.poster_url,
+    score_mal: anime.score_mal,
+    score_anilist: anime.score_anilist,
+    score_shiki: anime.score_shiki,
+    episodes_total: anime.episodes_total,
+    airing_status: anime.airing_status,
+    airing_day: anime.airing_day,
+    next_ep_num: anime.next_ep_num,
+    next_ep_at: anime.next_ep_at,
+    genres: genres,
+    related: related
+  };
 %>
 
-<div class="card <%= cardClass %>" data-mal-id="<%= anime.mal_id %>" data-followed="<%= userStatus ? 'true' : 'false' %>" data-score-mal="<%= anime.score_mal || 0 %>" data-score-anilist="<%= anime.score_anilist || 0 %>" data-score-shiki="<%= anime.score_shiki || 0 %>" data-next-ep-at="<%= anime.next_ep_at || 0 %>" data-status="<%= userStatus || '' %>">
+<div
+  class="card <%= cardClass %>"
+  data-mal-id="<%= anime.mal_id %>"
+  data-followed="<%= userStatus ? 'true' : 'false' %>"
+  data-score-mal="<%= anime.score_mal || 0 %>"
+  data-score-anilist="<%= anime.score_anilist || 0 %>"
+  data-score-shiki="<%= anime.score_shiki || 0 %>"
+  data-next-ep-at="<%= anime.next_ep_at || 0 %>"
+  data-status="<%= userStatus || '' %>"
+  data-modal="<%= Buffer.from(JSON.stringify(modalData)).toString('base64') %>"
+>
   <img class="card__poster" src="<%= anime.poster_url %>" alt="<%= title %>" loading="lazy">
   <div class="card__body">
     <div class="card__header">
@@ -48,7 +94,7 @@
       </div>
     <% } else { %>
       <div class="card__countdown <%= countdownClass %>">
-        <span><%= countdownDisplay %></span>
+        <span><%= countdownBadge %></span>
       </div>
     <% } %>
     <div class="card__scores">
@@ -60,6 +106,7 @@
       <% } %>
     </div>
     <p class="card__synopsis"><%= synopsisShort %></p>
+    <button class="btn btn--more" data-moreless="more">Show more ▾</button>
     <div class="card__actions">
       <button class="btn btn--follow <%= userStatus === 'following' ? 'active' : '' %>" data-status="following">
         ♡ Follow

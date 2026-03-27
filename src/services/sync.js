@@ -1,7 +1,7 @@
 const jikan = require('./jikan');
 const anilist = require('./anilist');
 const shikimori = require('./shikimori');
-const { upsertAnime } = require('../db/db');
+const { upsertAnime, getAnimeByMalId } = require('../db/db');
 
 function getCurrentSeason() {
   const now = new Date();
@@ -34,18 +34,19 @@ async function syncSeason(year, season) {
   for (const anime of jikanAnime) {
     const alData = anilistMap.get(anime.mal_id) || {};
     const shData = shikiMap.get(anime.mal_id) || {};
+    const existing = getAnimeByMalId(anime.mal_id) || {};
     
     const merged = {
       mal_id: anime.mal_id,
       title_en: anime.title_en || alData.title_en || null,
       title_jp: alData.title_jp || anime.title_jp || null,
-      title_ru: shData.title_ru || null,
+      title_ru: shData.title_ru ?? existing.title_ru ?? null,
       synopsis_en: anime.synopsis_en || null,
-      synopsis_ru: shData.synopsis_ru || null,
+      synopsis_ru: shData.synopsis_ru ?? existing.synopsis_ru ?? null,
       poster_url: anime.poster_url || alData.poster_url || null,
       score_mal: anime.score_mal || null,
       score_anilist: alData.score_anilist || null,
-      score_shiki: shData.score_shiki || null,
+      score_shiki: shData.score_shiki ?? existing.score_shiki ?? null,
       episodes_total: anime.episodes_total || alData.episodes_total || null,
       season: anime.season,
       airing_status: alData.airing_status || anime.airing_status || null,
