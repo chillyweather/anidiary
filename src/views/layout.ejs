@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= typeof title !== 'undefined' ? title + ' - anidiary' : 'anidiary' %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <% if (typeof user !== 'undefined' && user && user.userId) { %>
+  <nav class="nav">
+    <a class="nav__logo" href="/">anidiary</a>
+    <div class="nav__season-picker">
+      <%- typeof seasonPicker !== 'undefined' ? seasonPicker : '' %>
+    </div>
+    <div class="nav__right">
+      <div class="lang-toggle">
+        <button data-lang="en" class="<%= user.langPref === 'en' ? 'active' : '' %>">EN</button>
+        <button data-lang="jp" class="<%= user.langPref === 'jp' ? 'active' : '' %>">JP</button>
+        <button data-lang="ru" class="<%= user.langPref === 'ru' ? 'active' : '' %>">RU</button>
+      </div>
+      <span class="nav__user"><%= user.username %></span>
+      <a href="/logout">logout</a>
+    </div>
+  </nav>
+  <% } %>
+  <main class="main">
+    <%- body %>
+  </main>
+  <script src="/js/app.js"></script>
+</body>
+</html>

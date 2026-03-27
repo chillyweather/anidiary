@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= year %> <%= season.charAt(0).toUpperCase() + season.slice(1) %> - anidiary</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="nav">
+    <a class="nav__logo" href="/">anidiary</a>
+    <div class="nav__season-picker">
+      <a href="/season/<%= adjacentSeasons.prevYear %>/<%= adjacentSeasons.prevSeason %>">
+        ← <%= adjacentSeasons.prevSeason.charAt(0).toUpperCase() + adjacentSeasons.prevSeason.slice(1) %> <%= adjacentSeasons.prevYear %>
+      </a>
+      <span class="nav__current">
+        <%= season.charAt(0).toUpperCase() + season.slice(1) %> <%= year %>
+      </span>
+      <a href="/season/<%= adjacentSeasons.nextYear %>/<%= adjacentSeasons.nextSeason %>">
+        <%= adjacentSeasons.nextSeason.charAt(0).toUpperCase() + adjacentSeasons.nextSeason.slice(1) %> <%= adjacentSeasons.nextYear %> →
+      </a>
+    </div>
+    <div class="nav__right">
+      <div class="lang-toggle">
+        <button data-lang="en" class="<%= user.langPref === 'en' ? 'active' : '' %>">EN</button>
+        <button data-lang="jp" class="<%= user.langPref === 'jp' ? 'active' : '' %>">JP</button>
+        <button data-lang="ru" class="<%= user.langPref === 'ru' ? 'active' : '' %>">RU</button>
+      </div>
+      <span class="nav__user"><%= user.username %></span>
+      <a href="/logout">logout</a>
+    </div>
+  </nav>
+  
+  <main class="main">
+    <div class="controls">
+      <div class="controls__tabs">
+        <button class="tab active" data-tab="all">All (<%= animeList.length %>)</button>
+        <button class="tab" data-tab="following">Following (<%= [...userStatuses.values()].filter(s => s).length %>)</button>
+      </div>
+      <div class="controls__sort">
+        <label>Sort by:</label>
+        <select id="sort-select">
+          <option value="score_mal">MAL Score</option>
+          <option value="score_anilist">AniList Score</option>
+          <option value="score_shiki">Shikimori Score</option>
+          <option value="next_ep">Next Episode</option>
+          <option value="title">Title</option>
+        </select>
+      </div>
+    </div>
+    
+    <div class="card-grid">
+      <% for (const anime of animeList) { %>
+        <%- include('partials/card', { anime, userStatus: userStatuses.get(anime.mal_id), langPref: user.langPref }) %>
+      <% } %>
+    </div>
+  </main>
+  
+  <script src="/js/app.js"></script>
+</body>
+</html>

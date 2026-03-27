@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register - anidiary</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="auth-page">
+  <div class="auth-card">
+    <h1 class="auth-card__title">anidiary</h1>
+    <p class="auth-card__subtitle">Create your account</p>
+    
+    <% if (error) { %>
+    <div class="auth-card__error"><%= error %></div>
+    <% } %>
+    
+    <form class="auth-card__form" method="POST" action="/register">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autofocus minlength="3" maxlength="20" pattern="[a-zA-Z0-9_]+">
+        <small>3-20 characters, letters, numbers, and underscores only</small>
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required minlength="6">
+        <small>At least 6 characters</small>
+      </div>
+      <button type="submit" class="btn btn--primary btn--full">Register</button>
+    </form>
+    
+    <p class="auth-card__link">Already have an account? <a href="/login">Login</a></p>
+  </div>
+</body>
+</html>

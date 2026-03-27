@@ -1,0 +1,67 @@
+<%
+  const title = langPref === 'jp' ? (anime.title_jp || anime.title_en) :
+                langPref === 'ru' ? (anime.title_ru || anime.title_en) :
+                anime.title_en;
+  const synopsis = langPref === 'ru' ? (anime.synopsis_ru || anime.synopsis_en) :
+                   anime.synopsis_en;
+  const synopsisShort = synopsis ? synopsis.substring(0, 150) + (synopsis.length > 150 ? '...' : '') : '';
+   
+  let countdownDisplay = '';
+  let countdownClass = '';
+  if (anime.next_ep_at && anime.next_ep_at > Math.floor(Date.now() / 1000)) {
+    countdownDisplay = 'countdown'; // will be filled by JS
+    countdownClass = 'countdown--airing';
+  } else if (anime.airing_status === 'Finished Airing') {
+    countdownDisplay = 'Released';
+    countdownClass = 'countdown--released';
+  } else if (anime.airing_status === 'Not yet aired') {
+    countdownDisplay = 'Not aired';
+    countdownClass = 'countdown--not-aired';
+  } else {
+    countdownDisplay = 'TBA';
+    countdownClass = 'countdown--tba';
+  }
+%>
+
+<div class="card" data-mal-id="<%= anime.mal_id %>" data-followed="<%= userStatus ? 'true' : 'false' %>" data-score-mal="<%= anime.score_mal || 0 %>" data-score-anilist="<%= anime.score_anilist || 0 %>" data-score-shiki="<%= anime.score_shiki || 0 %>" data-next-ep-at="<%= anime.next_ep_at || 0 %>">
+  <img class="card__poster" src="<%= anime.poster_url %>" alt="<%= title %>" loading="lazy">
+  <div class="card__body">
+    <h3 class="card__title"><%= title %></h3>
+    <p class="card__subtitle">
+      <% if (langPref === 'en' && anime.title_jp) { %>
+        <%= anime.title_jp %>
+      <% } else if (langPref === 'jp' && anime.title_en) { %>
+        <%= anime.title_en %>
+      <% } else if (langPref === 'ru' && anime.title_en) { %>
+        <%= anime.title_en %>
+      <% } %>
+    </p>
+    <div class="card__countdown <%= countdownClass %>"><% if (anime.next_ep_at && anime.next_ep_at > Math.floor(Date.now() / 1000)) { %>
+      <span class="countdown-timer" data-timestamp="<%= anime.next_ep_at %>">loading...</span>
+      <span class="countdown-ep">ep <%= anime.next_ep_num %>/<%= anime.episodes_total || '?' %></span>
+    <% } else { %>
+      <span><%= countdownDisplay %></span>
+    <% } %>
+    </div>
+    <div class="card__scores">
+      <% if (anime.score_mal) { %>
+        <span class="score score--mal">MAL <%= anime.score_mal.toFixed(1) %></span>
+      <% } %>
+      <% if (anime.score_anilist) { %>
+        <span class="score score--al">AL <%= anime.score_anilist %></span>
+      <% } %>
+    </div>
+    <p class="card__synopsis"><%= synopsisShort %></p>
+    <div class="card__actions">
+      <button class="btn btn--follow <%= userStatus === 'following' ? 'active' : '' %>" data-status="following">
+        ♡ Follow
+      </button>
+      <button class="btn btn--jellyfin <%= userStatus === 'in_jellyfin' ? 'active' : '' %>" data-status="in_jellyfin">
+        📦 Jellyfin
+      </button>
+      <button class="btn btn--watched <%= userStatus === 'watched' ? 'active' : '' %>" data-status="watched">
+        ✓ Watched
+      </button>
+    </div>
+  </div>
+</div>
