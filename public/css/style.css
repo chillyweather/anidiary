@@ -583,6 +583,14 @@ body {
   padding: 2px 7px;
   border-radius: 5px;
   font-weight: 700;
+  text-decoration: none;
+  display: inline-block;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.score:hover {
+  opacity: 0.75;
 }
 
 .score--mal {
@@ -858,6 +866,16 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  transition: opacity 0.15s;
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.modal__score-item:hover {
+  opacity: 0.75;
 }
 
 .modal__score-label {

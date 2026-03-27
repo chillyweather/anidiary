@@ -145,24 +145,24 @@ function openModal(card) {
   scores.innerHTML = '';
   if (data.score_mal) {
     scores.innerHTML += `
-      <div class="modal__score-item">
+      <a class="modal__score-item" href="https://myanimelist.net/anime/${data.mal_id}" target="_blank" rel="noopener">
         <span class="modal__score-label">MAL</span>
         <span class="modal__score-value modal__score-value--mal">${parseFloat(data.score_mal).toFixed(1)}</span>
-      </div>`;
+      </a>`;
   }
-  if (data.score_anilist) {
+  if (data.score_anilist && data.anilist_id) {
     scores.innerHTML += `
-      <div class="modal__score-item">
+      <a class="modal__score-item" href="https://anilist.co/anime/${data.anilist_id}" target="_blank" rel="noopener">
         <span class="modal__score-label">AniList</span>
         <span class="modal__score-value modal__score-value--al">${data.score_anilist}</span>
-      </div>`;
+      </a>`;
   }
   if (data.score_shiki) {
     scores.innerHTML += `
-      <div class="modal__score-item">
+      <a class="modal__score-item" href="https://shikimori.one/animes/${data.mal_id}" target="_blank" rel="noopener">
         <span class="modal__score-label">Shikimori</span>
         <span class="modal__score-value modal__score-value--shiki">${parseFloat(data.score_shiki).toFixed(1)}</span>
-      </div>`;
+      </a>`;
   }
 
   const now = Math.floor(Date.now() / 1000);

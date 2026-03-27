@@ -6,6 +6,7 @@ const SEASON_QUERY = `
     Page(page: $page, perPage: 50) {
       pageInfo { hasNextPage currentPage }
       media(season: $season, seasonYear: $year, type: ANIME, sort: POPULARITY_DESC) {
+        id
         idMal
         title { romaji english native }
         nextAiringEpisode { airingAt episode }

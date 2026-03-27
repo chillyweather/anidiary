@@ -54,6 +54,7 @@
     score_mal: anime.score_mal,
     score_anilist: anime.score_anilist,
     score_shiki: anime.score_shiki,
+    anilist_id: anime.anilist_id,
     episodes_total: anime.episodes_total,
     airing_status: anime.airing_status,
     airing_day: anime.airing_day,
@@ -99,10 +100,10 @@
     <% } %>
     <div class="card__scores">
       <% if (anime.score_mal) { %>
-        <span class="score score--mal">MAL <%= anime.score_mal.toFixed(1) %></span>
+        <a class="score score--mal" href="https://myanimelist.net/anime/<%= anime.mal_id %>" target="_blank" rel="noopener">MAL <%= anime.score_mal.toFixed(1) %></a>
       <% } %>
-      <% if (anime.score_anilist) { %>
-        <span class="score score--al">AL <%= anime.score_anilist %></span>
+      <% if (anime.score_anilist && anime.anilist_id) { %>
+        <a class="score score--al" href="https://anilist.co/anime/<%= anime.anilist_id %>" target="_blank" rel="noopener">AL <%= anime.score_anilist %></a>
       <% } %>
     </div>
     <p class="card__synopsis"><%= synopsisShort %></p>
