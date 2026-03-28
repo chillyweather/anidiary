@@ -1,5 +1,9 @@
 node_modules
 .env
 anidiary.db
+anidiary.db*
+db-reset-*/
+.seed-progress.json
+.seed-summary.json
 *.log
 .DS_Store

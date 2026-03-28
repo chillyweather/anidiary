@@ -39,6 +39,11 @@ jobs:
             --exclude "node_modules/" \
             --exclude ".env" \
             --exclude "anidiary.db" \
+            --exclude "anidiary.db-*" \
+            --exclude "anidiary.db*" \
+            --exclude "db-reset-*/" \
+            --exclude ".seed-progress.json" \
+            --exclude ".seed-summary.json" \
             --exclude "*.log" \
             -e "ssh -p ${SERVER_PORT}" \
             ./ "${SERVER_USER}@${SERVER_HOST}:${APP_DIR}/"
