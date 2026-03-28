@@ -1,0 +1,63 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf "%s\n" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync files to server
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          APP_DIR: ${{ secrets.APP_DIR }}
+        run: |
+          rsync -az --delete \
+            --exclude ".git/" \
+            --exclude ".github/" \
+            --exclude "node_modules/" \
+            --exclude ".env" \
+            --exclude "anidiary.db" \
+            --exclude "*.log" \
+            -e "ssh -p ${SERVER_PORT}" \
+            ./ "${SERVER_USER}@${SERVER_HOST}:${APP_DIR}/"
+
+      - name: Install and restart app
+        env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          APP_DIR: ${{ secrets.APP_DIR }}
+        run: |
+          ssh -p "${SERVER_PORT}" "${SERVER_USER}@${SERVER_HOST}" "set -e; \
+            mkdir -p '${APP_DIR}'; \
+            cd '${APP_DIR}'; \
+            npm ci --omit=dev; \
+            if command -v pm2 >/dev/null 2>&1; then \
+              pm2 startOrReload ecosystem.config.js --env production; \
+              pm2 save; \
+            else \
+              echo 'pm2 is not installed on server'; \
+              exit 1; \
+            fi"

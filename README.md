@@ -162,6 +162,66 @@ JSON API:
 - Keep `.env` and `anidiary.db` out of git
 - Back up `anidiary.db` regularly
 
+## CI/CD (GitHub Actions)
+
+Two workflows are included:
+
+- `CI` (`.github/workflows/ci.yml`)
+  - runs on pull requests and pushes to `main`
+  - installs dependencies and performs a basic smoke test (`/login`, `/register`)
+- `Deploy` (`.github/workflows/deploy.yml`)
+  - runs on push to `main` (and manual trigger)
+  - uploads files to your server via `rsync`
+  - runs `npm ci --omit=dev`
+  - reloads app with PM2 using `ecosystem.config.js`
+
+### Required GitHub Secrets
+
+Set these in GitHub repository settings (`Settings -> Secrets and variables -> Actions`):
+
+- `SERVER_HOST` - server IP or hostname
+- `SERVER_PORT` - SSH port (usually `22`)
+- `SERVER_USER` - SSH user
+- `SSH_PRIVATE_KEY` - private key used by GitHub Actions to SSH into server
+- `APP_DIR` - absolute deploy path on server (for example `/var/www/anidiary`)
+
+### One-time Server Setup
+
+On your server (Ubuntu/Debian example):
+
+```bash
+sudo apt update
+sudo apt install -y nginx
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+sudo npm install -g pm2
+
+sudo mkdir -p /var/www/anidiary
+sudo chown -R $USER:$USER /var/www/anidiary
+cd /var/www/anidiary
+
+cat > .env << 'EOF'
+SESSION_SECRET=replace-with-strong-secret
+PORT=3000
+NODE_ENV=production
+EOF
+```
+
+Then run first deploy from GitHub Actions and seed data once:
+
+```bash
+cd /var/www/anidiary
+npm run seed -- 2026 winter
+```
+
+### PM2 commands on server
+
+```bash
+pm2 status
+pm2 logs anidiary
+pm2 restart anidiary
+```
+
 ## Known Scope
 
 This repository currently implements core MVP behavior. Optional integrations (Jellyfin/Plex/OAuth imports/AI features) are intentionally out of scope for now.
