@@ -37,9 +37,17 @@ function updateCountdowns() {
 }
 
 function setCardStatusClass(card, status) {
-  card.classList.remove('card--following', 'card--jellyfin', 'card--watched');
-  if (status && status !== 'none') {
-    card.classList.add(`card--${status}`);
+  card.classList.remove('card--following', 'card--jellyfin', 'card--watched', 'card--in_jellyfin');
+
+  const statusClassMap = {
+    following: 'card--following',
+    in_jellyfin: 'card--jellyfin',
+    watched: 'card--watched'
+  };
+
+  const className = statusClassMap[status];
+  if (className) {
+    card.classList.add(className);
   }
 }
 
