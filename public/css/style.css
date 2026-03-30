@@ -476,6 +476,7 @@ body {
 .card--watched {
   background: var(--watched-light);
   border-color: rgba(124, 179, 130, 0.35);
+  opacity: 0.3;
 }
 
 /* Multiple statuses: prioritize watched > jellyfin > follow */
@@ -488,11 +489,13 @@ body {
 .card--jellyfin.card--watched {
   background: var(--watched-light);
   border-color: rgba(124, 179, 130, 0.35);
+  opacity: 0.3;
 }
 
 .card--following.card--jellyfin.card--watched {
   background: var(--watched-light);
   border-color: rgba(124, 179, 130, 0.35);
+  opacity: 0.3;
 }
 
 .card--hidden {
