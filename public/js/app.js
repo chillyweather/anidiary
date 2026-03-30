@@ -77,6 +77,9 @@ function initStatusButtons() {
           card.dataset.followed   = newStatus !== 'none' ? 'true' : 'false';
           card.dataset.status     = newStatus !== 'none' ? newStatus : '';
           updateFollowingCount();
+          if (typeof window.applyTabFilter === 'function') {
+            window.applyTabFilter();
+          }
           syncModalStatus(malId, newStatus);
         }
       } catch (err) {
@@ -278,6 +281,9 @@ function initModal() {
             card.dataset.followed = newStatus !== 'none' ? 'true' : 'false';
             card.dataset.status   = newStatus !== 'none' ? newStatus : '';
             updateFollowingCount();
+            if (typeof window.applyTabFilter === 'function') {
+              window.applyTabFilter();
+            }
           }
           syncModalStatus(malId, newStatus);
         }
@@ -289,20 +295,34 @@ function initModal() {
 }
 
 function initTabs() {
+  const applyTabFilter = () => {
+    const activeTab = document.querySelector('.tab.active');
+    if (!activeTab) return;
+
+    const tabType = activeTab.dataset.tab;
+    document.querySelectorAll('.card').forEach(card => {
+      const isFollowed = card.dataset.followed === 'true';
+      const isCurrentSeason = card.dataset.inCurrentSeason !== 'false';
+
+      if (tabType === 'all') {
+        card.classList.toggle('card--hidden', !isCurrentSeason);
+      } else {
+        card.classList.toggle('card--hidden', !isFollowed);
+      }
+    });
+  };
+
+  window.applyTabFilter = applyTabFilter;
+
   document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      const tabType = tab.dataset.tab;
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
-      document.querySelectorAll('.card').forEach(card => {
-        if (tabType === 'all') {
-          card.classList.remove('card--hidden');
-        } else {
-          card.classList.toggle('card--hidden', card.dataset.followed !== 'true');
-        }
-      });
+      applyTabFilter();
     });
   });
+
+  applyTabFilter();
 }
 
 function initSorting() {

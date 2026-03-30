@@ -55,7 +55,10 @@
 
     <div class="card-grid">
       <% for (const anime of animeList) { %>
-        <%- include('partials/card', { anime, userStatus: userStatuses.get(anime.mal_id), langPref: user.langPref }) %>
+        <%- include('partials/card', { anime, userStatus: userStatuses.get(anime.mal_id), langPref: user.langPref, isCurrentSeason: true, initiallyHidden: false }) %>
+      <% } %>
+      <% for (const anime of followedAnimeOutsideSeason) { %>
+        <%- include('partials/card', { anime, userStatus: userStatuses.get(anime.mal_id), langPref: user.langPref, isCurrentSeason: false, initiallyHidden: true }) %>
       <% } %>
     </div>
   </main>

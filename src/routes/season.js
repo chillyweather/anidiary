@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAnimeBySeason, getUserAnimeStatus } = require('../db/db');
+const { getAnimeBySeason, getUserAnimeStatus, getFollowedAnimeForUser } = require('../db/db');
 const { requireLogin } = require('../middleware/auth');
 
 function getCurrentSeason() {
@@ -61,6 +61,7 @@ router.get('/season/:year/:season', requireLogin, (req, res) => {
   
   const animeList = getAnimeBySeason(seasonParam);
   const userStatuses = getUserAnimeStatus(req.session.userId);
+  const followedAnime = getFollowedAnimeForUser(req.session.userId);
   
   const statusMap = new Map();
   for (const row of userStatuses) {
@@ -68,9 +69,11 @@ router.get('/season/:year/:season', requireLogin, (req, res) => {
   }
   
   const adjacentSeasons = getAdjacentSeasons(year, season);
+  const followedAnimeOutsideSeason = followedAnime.filter((anime) => anime.season !== seasonParam);
   
   res.render('season', {
     animeList,
+    followedAnimeOutsideSeason,
     userStatuses: statusMap,
     year,
     season,

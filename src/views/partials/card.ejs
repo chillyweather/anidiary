@@ -42,6 +42,8 @@
   const genres = JSON.parse(anime.genres || '[]');
 
   const related = anime.related ? JSON.parse(anime.related) : [];
+  const currentSeasonCard = typeof isCurrentSeason === 'undefined' ? true : Boolean(isCurrentSeason);
+  const initiallyHiddenCard = typeof initiallyHidden === 'undefined' ? false : Boolean(initiallyHidden);
 
   const modalData = {
     mal_id: anime.mal_id,
@@ -66,9 +68,10 @@
 %>
 
 <div
-  class="card <%= cardClass %>"
+  class="card <%= cardClass %> <%= initiallyHiddenCard ? 'card--hidden' : '' %>"
   data-mal-id="<%= anime.mal_id %>"
   data-followed="<%= userStatus ? 'true' : 'false' %>"
+  data-in-current-season="<%= currentSeasonCard ? 'true' : 'false' %>"
   data-score-mal="<%= anime.score_mal || 0 %>"
   data-score-anilist="<%= anime.score_anilist || 0 %>"
   data-score-shiki="<%= anime.score_shiki || 0 %>"

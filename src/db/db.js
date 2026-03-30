@@ -48,6 +48,16 @@ function getUserAnimeStatus(userId) {
   return db.prepare('SELECT mal_id, status FROM user_anime WHERE user_id = ?').all(userId);
 }
 
+function getFollowedAnimeForUser(userId) {
+  return db.prepare(`
+    SELECT a.*
+    FROM user_anime ua
+    JOIN anime a ON a.mal_id = ua.mal_id
+    WHERE ua.user_id = ?
+    ORDER BY ua.updated_at DESC
+  `).all(userId);
+}
+
 function setUserAnimeStatus(userId, malId, status) {
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO user_anime (user_id, mal_id, status, episodes_seen, updated_at)
@@ -88,6 +98,7 @@ module.exports = {
   getAnimeByMalId,
   upsertAnime,
   getUserAnimeStatus,
+  getFollowedAnimeForUser,
   setUserAnimeStatus,
   removeUserAnimeStatus,
   createUser,
