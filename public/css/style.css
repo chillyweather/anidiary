@@ -454,6 +454,7 @@ body {
   box-shadow: var(--shadow-sm);
   position: relative;
   overflow: hidden;
+  height: 180px;
 }
 
 .card:hover {
@@ -661,6 +662,7 @@ body {
 
   .card {
     flex-direction: column;
+    height: auto;
   }
 
   .card__poster {
