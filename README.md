@@ -1,62 +1,74 @@
 # anidiary
 
-Personal anime release calendar and viewing tracker.
+Personal anime release calendar & viewing tracker for me and my wife.
 
-This app is server-rendered (EJS), uses SQLite for data/session storage, and syncs anime metadata from:
+Server-rendered with EJS, backed by SQLite, syncing metadata from Jikan, AniList, and Shikimori.
 
-- Jikan (primary seasonal catalog)
-- AniList (next airing episode + AniList score)
-- Shikimori (Russian title/synopsis + score)
+## Quick Start
+
+```bash
+npm install
+cp .env.example .env
+# Set SESSION_SECRET in .env
+npm run seed
+npm start
+```
+
+Open `http://localhost:3000/login`
+
+## What It Does
+
+- **Seasonal anime calendar** — see what's airing this season with countdowns to next episodes
+- **Viewing tracker** — mark shows as `following`, `in jellyfin`, or `watched`
+- **Multi-language titles** — toggle between English, Japanese, and Russian titles (Shikimori for RU)
+- **Three-score comparison** — MAL, AniList, and Shikimori ratings side by side
+- **Auto-sync** — countdowns refresh every 6h, full season sync every 24h
 
 ## Stack
 
-- Node.js `>=18`
-- Express 4
-- SQLite (`better-sqlite3`)
-- Sessions: `express-session` + `better-sqlite3-session-store`
-- Auth: `bcrypt`
-- Views: EJS
-- Client: Vanilla JS
+| Layer | Tech |
+|-------|------|
+| Runtime | Node.js 18+ |
+| Server | Express 4 |
+| Database | SQLite (`better-sqlite3`) |
+| Auth | `bcrypt` + `express-session` |
+| Views | EJS |
+| Client | Vanilla JS |
 
-## Features (current)
+## Data Sources
 
-- Username/password auth (register, login, logout)
-- Seasonal anime page with:
-  - countdowns for next episode
-  - status actions (`following`, `in_jellyfin`, `watched`)
-  - language toggle (`en`, `jp`, `ru`)
-  - client-side tabs and sorting
-- Background sync jobs:
-  - refresh countdowns every 6h
-  - full current-season sync every 24h
-- Manual seed command for initial population
+- **Jikan** (primary) — seasonal catalog, MAL scores, episode counts
+- **AniList** — next airing timestamps, AniList scores
+- **Shikimori** — Russian titles/synopses, Shikimori scores
+
+All merged by **MAL ID** as the universal key.
 
 ## Project Structure
 
-```text
+```
 anidiary/
-├── server.js
+├── server.js                 # Express app, session config, sync intervals
 ├── scripts/
-│   └── seed.js
+│   └── seed.js               # CLI: seed current season data
 ├── public/
 │   ├── css/style.css
-│   └── js/app.js
+│   └── js/app.js             # countdowns, status toggles, sorting
 └── src/
     ├── db/
-    │   ├── db.js
+    │   ├── db.js             # SQLite init + helpers
     │   └── schema.sql
     ├── middleware/
     │   └── auth.js
     ├── routes/
-    │   ├── auth.js
-    │   ├── season.js
-    │   └── api.js
+    │   ├── auth.js           # /login, /register, /logout
+    │   ├── season.js         # /season/:year/:season
+    │   └── api.js            # /api/mark, /api/anime/:id, /api/lang
     ├── services/
     │   ├── rateLimiter.js
     │   ├── jikan.js
     │   ├── anilist.js
     │   ├── shikimori.js
-    │   └── sync.js
+    │   └── sync.js           # merge orchestrator
     └── views/
         ├── login.ejs
         ├── register.ejs
@@ -65,163 +77,20 @@ anidiary/
         └── partials/card.ejs
 ```
 
-## Setup
-
-1. Install dependencies:
-
-```bash
-npm install
-```
-
-2. Create environment file:
-
-```bash
-cp .env.example .env
-```
-
-3. Set at least:
-
-```env
-SESSION_SECRET=<strong-random-secret>
-PORT=3000
-```
-
-`SESSION_SECRET` is required in production.
-
-## Running Locally
-
-Seed current season:
-
-```bash
-npm run seed
-```
-
-Or seed explicit season:
-
-```bash
-npm run seed -- 2026 winter
-```
-
-Start server:
-
-```bash
-npm start
-```
-
-Open:
-
-`http://localhost:3000/login`
-
-## Available Scripts
-
-- `npm start` - starts Express server
-- `npm run seed` - syncs anime data into SQLite (`anidiary.db`)
-
-## Sync and Data Model
-
-Merge key: **MAL ID**
-
-1. Pull season list from Jikan
-2. Pull same season from AniList and map by `idMal`
-3. Pull Shikimori details by MAL ID
-4. Merge and upsert into `anime`
-
-Important DB tables:
-
-- `anime` - merged metadata and scores
-- `users` - auth + language preference
-- `user_anime` - per-user status
-- `watch_history` - reserved for later phase
-- `sessions` - session store table (managed by session store)
-
 ## API Endpoints
 
-Auth:
+**Auth:** `GET/POST /login`, `GET/POST /register`, `GET /logout`
 
-- `GET /login`
-- `POST /login`
-- `GET /register`
-- `POST /register`
-- `GET /logout`
+**App:** `GET /` → redirects to current season, `GET /season/:year/:season`
 
-App:
+**JSON:** `POST /api/mark` (auth), `GET /api/anime/:mal_id`, `POST /api/lang` (auth)
 
-- `GET /` -> redirects to current season
-- `GET /season/:year/:season`
+## Deployment
 
-JSON API:
+Runs behind nginx with PM2. See `PLAN.md` for full deployment steps, nginx config, and GitHub Actions CI/CD setup.
 
-- `POST /api/mark` (auth required)
-- `GET /api/anime/:mal_id`
-- `POST /api/lang` (auth required)
+## Notes
 
-## Production Notes
-
-- App expects to run behind a reverse proxy (nginx)
-- Session cookie is `secure` in production (`NODE_ENV=production`)
-- Keep `.env` and `anidiary.db` out of git
+- `.env` and `anidiary.db` are gitignored
 - Back up `anidiary.db` regularly
-
-## CI/CD (GitHub Actions)
-
-Two workflows are included:
-
-- `CI` (`.github/workflows/ci.yml`)
-  - runs on pull requests and pushes to `main`
-  - installs dependencies and performs a basic smoke test (`/login`, `/register`)
-- `Deploy` (`.github/workflows/deploy.yml`)
-  - runs on push to `main` (and manual trigger)
-  - uploads files to your server via `rsync`
-  - runs `npm ci --omit=dev`
-  - reloads app with PM2 using `ecosystem.config.js`
-
-### Required GitHub Secrets
-
-Set these in GitHub repository settings (`Settings -> Secrets and variables -> Actions`):
-
-- `SERVER_HOST` - server IP or hostname
-- `SERVER_PORT` - SSH port (usually `22`)
-- `SERVER_USER` - SSH user
-- `SSH_PRIVATE_KEY` - private key used by GitHub Actions to SSH into server
-- `APP_DIR` - absolute deploy path on server (for example `/var/www/anidiary`)
-
-### One-time Server Setup
-
-On your server (Ubuntu/Debian example):
-
-```bash
-sudo apt update
-sudo apt install -y nginx
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-sudo npm install -g pm2
-
-sudo mkdir -p /var/www/anidiary
-sudo chown -R $USER:$USER /var/www/anidiary
-cd /var/www/anidiary
-
-cat > .env << 'EOF'
-SESSION_SECRET=replace-with-strong-secret
-PORT=3000
-NODE_ENV=production
-EOF
-```
-
-Then run first deploy from GitHub Actions and seed data once:
-
-```bash
-cd /var/www/anidiary
-npm run seed -- 2026 winter
-```
-
-### PM2 commands on server
-
-```bash
-pm2 status
-pm2 logs anidiary
-pm2 restart anidiary
-```
-
-## Known Scope
-
-This repository currently implements core MVP behavior. Optional integrations (Jellyfin/Plex/OAuth imports/AI features) are intentionally out of scope for now.
+- See `PLAN.md` for detailed architecture, design spec, and future phases
