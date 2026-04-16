@@ -1,9 +1,18 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const { createUser, getUserByUsername } = require('../db/db');
 
 const BCRYPT_ROUNDS = 12;
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts, try again later' }
+});
 
 function normalizeUsername(username) {
   return String(username || '').trim();
@@ -32,7 +41,7 @@ router.get('/login', (req, res) => {
   res.render('login', { error: null });
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
     const username = normalizeUsername(req.body.username);
     const password = String(req.body.password || '');
@@ -43,13 +52,12 @@ router.post('/login', async (req, res) => {
 
     const user = getUserByUsername(username);
 
-    if (!user) {
-      return res.render('login', { error: 'Invalid username or password' });
-    }
+    const DUMMY_HASH = '$2b$12$CwTycUXWue0Thq9StjUM0uJ8.FQYB1YvQm0gK6lL0m7fQpF5u6bYu';
+    const hashToCompare = user ? user.password_hash : DUMMY_HASH;
 
-    const match = await bcrypt.compare(password, user.password_hash);
+    const match = await bcrypt.compare(password, hashToCompare);
 
-    if (!match) {
+    if (!user || !match) {
       return res.render('login', { error: 'Invalid username or password' });
     }
 
@@ -68,7 +76,7 @@ router.get('/register', (req, res) => {
   res.render('register', { error: null });
 });
 
-router.post('/register', async (req, res) => {
+router.post('/register', authLimiter, async (req, res) => {
   try {
     const username = normalizeUsername(req.body.username);
     const password = String(req.body.password || '');
@@ -104,7 +112,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.get('/logout', (req, res) => {
+router.post('/logout', (req, res) => {
   req.session.destroy(() => {
     res.clearCookie('anidiary.sid');
     res.redirect('/login');

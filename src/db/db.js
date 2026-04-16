@@ -29,7 +29,7 @@ function getAnimeByMalId(malId) {
 
 function upsertAnime(anime) {
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO anime (
+    INSERT INTO anime (
       mal_id, title_en, title_jp, title_ru, synopsis_en, synopsis_ru,
       poster_url, score_mal, score_anilist, score_shiki, episodes_total,
       season, airing_status, airing_day, next_ep_num, next_ep_at,
@@ -40,6 +40,26 @@ function upsertAnime(anime) {
       @season, @airing_status, @airing_day, @next_ep_num, @next_ep_at,
       @anilist_id, @genres, @related, unixepoch()
     )
+    ON CONFLICT(mal_id) DO UPDATE SET
+      title_en       = excluded.title_en,
+      title_jp       = excluded.title_jp,
+      title_ru       = excluded.title_ru,
+      synopsis_en    = excluded.synopsis_en,
+      synopsis_ru    = excluded.synopsis_ru,
+      poster_url     = excluded.poster_url,
+      score_mal      = excluded.score_mal,
+      score_anilist  = excluded.score_anilist,
+      score_shiki    = excluded.score_shiki,
+      episodes_total = excluded.episodes_total,
+      season         = excluded.season,
+      airing_status  = excluded.airing_status,
+      airing_day     = excluded.airing_day,
+      next_ep_num    = excluded.next_ep_num,
+      next_ep_at     = excluded.next_ep_at,
+      anilist_id     = excluded.anilist_id,
+      genres         = excluded.genres,
+      related        = excluded.related,
+      updated_at     = unixepoch()
   `);
   return stmt.run(anime);
 }

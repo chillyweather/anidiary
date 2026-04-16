@@ -4,6 +4,8 @@ const express = require('express');
 const session = require('express-session');
 const SQLiteStore = require('better-sqlite3-session-store')(session);
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 
 const { db, initDb } = require('./src/db/db');
 const { syncSeason, refreshCountdowns, getCurrentSeason } = require('./src/services/sync');
@@ -14,11 +16,21 @@ const apiRoutes = require('./src/routes/api');
 
 const PORT = process.env.PORT || 3000;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-const SESSION_SECRET = process.env.SESSION_SECRET;
-
-if (!SESSION_SECRET && IS_PRODUCTION) {
-  throw new Error('SESSION_SECRET is required in production');
+function loadSessionSecret() {
+  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  if (IS_PRODUCTION) {
+    throw new Error('SESSION_SECRET is required in production');
+  }
+  const secretPath = path.join(__dirname, '.session-secret');
+  if (fs.existsSync(secretPath)) {
+    return fs.readFileSync(secretPath, 'utf8').trim();
+  }
+  const generated = crypto.randomBytes(32).toString('hex');
+  fs.writeFileSync(secretPath, generated, { mode: 0o600 });
+  return generated;
 }
+
+const SESSION_SECRET = loadSessionSecret();
 
 initDb();
 
@@ -57,7 +69,7 @@ app.use(session({
     expired: { clear: true, intervalMs: 900000 }
   }),
   name: 'anidiary.sid',
-  secret: SESSION_SECRET || 'dev-secret-change-in-production',
+  secret: SESSION_SECRET,
   proxy: IS_PRODUCTION,
   resave: false,
   saveUninitialized: false,

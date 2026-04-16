@@ -7,3 +7,4 @@ db-reset-*/
 .seed-summary.json
 *.log
 .DS_Store
+.session-secret

@@ -24,7 +24,9 @@
         <button data-lang="ru" class="<%= user.langPref === 'ru' ? 'active' : '' %>">RU</button>
       </div>
       <span class="nav__user"><%= user.username %></span>
-      <a href="/logout">logout</a>
+      <form method="POST" action="/logout" class="logout-form">
+        <button type="submit" class="logout-btn">logout</button>
+      </form>
     </div>
   </nav>
   <% } %>

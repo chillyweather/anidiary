@@ -321,6 +321,26 @@ body {
   text-decoration: underline;
 }
 
+.logout-form {
+  display: inline;
+}
+
+.logout-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.logout-btn:hover {
+  text-decoration: underline;
+}
+
 .lang-toggle {
   display: flex;
   background: var(--surface-alt);
