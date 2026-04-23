@@ -27,6 +27,10 @@ function getAnimeByMalId(malId) {
   return db.prepare('SELECT * FROM anime WHERE mal_id = ?').get(malId);
 }
 
+function updateAnimeRelated(malId, related) {
+  return db.prepare('UPDATE anime SET related = ?, updated_at = unixepoch() WHERE mal_id = ?').run(related, malId);
+}
+
 function upsertAnime(anime) {
   const stmt = db.prepare(`
     INSERT INTO anime (
@@ -66,6 +70,10 @@ function upsertAnime(anime) {
 
 function getUserAnimeStatus(userId) {
   return db.prepare('SELECT mal_id, status FROM user_anime WHERE user_id = ?').all(userId);
+}
+
+function getUserAnimeStatusByMalId(userId, malId) {
+  return db.prepare('SELECT status FROM user_anime WHERE user_id = ? AND mal_id = ?').get(userId, malId);
 }
 
 function getFollowedAnimeForUser(userId) {
@@ -116,8 +124,10 @@ module.exports = {
   initDb,
   getAnimeBySeason,
   getAnimeByMalId,
+  updateAnimeRelated,
   upsertAnime,
   getUserAnimeStatus,
+  getUserAnimeStatusByMalId,
   getFollowedAnimeForUser,
   setUserAnimeStatus,
   removeUserAnimeStatus,

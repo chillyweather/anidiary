@@ -1,4 +1,7 @@
 let currentModalMalId = null;
+let currentModalStatus = '';
+let currentModalRequestId = 0;
+const modalAnimeCache = new Map();
 
 function decodeBase64Utf8(value) {
   const binary = atob(value);
@@ -9,6 +12,36 @@ function decodeBase64Utf8(value) {
 function getCurrentLang() {
   const active = document.querySelector('.lang-toggle button.active');
   return active ? active.dataset.lang : 'en';
+}
+
+function getAnimeDisplayTitle(data) {
+  const currentLang = getCurrentLang();
+
+  if (currentLang === 'jp') {
+    return data.title_jp || data.title_en || data.title_ru || '';
+  }
+
+  if (currentLang === 'ru') {
+    return data.title_ru || data.title_en || data.title_jp || '';
+  }
+
+  return data.title_en || data.title_jp || data.title_ru || '';
+}
+
+function getCardByMalId(malId) {
+  return document.querySelector(`.card[data-mal-id="${malId}"]`);
+}
+
+function parseCardModalData(card) {
+  const raw = card?.dataset.modal;
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(decodeBase64Utf8(raw));
+  } catch (err) {
+    console.error('Failed to parse modal data:', err);
+    return null;
+  }
 }
 
 function updateCountdowns() {
@@ -90,27 +123,73 @@ function initStatusButtons() {
 }
 
 function syncModalStatus(malId, status) {
+  const cached = modalAnimeCache.get(malId);
+  if (cached) {
+    cached.user_status = status || null;
+  }
+
   if (currentModalMalId !== malId) return;
+
+  currentModalStatus = status || '';
   document.querySelectorAll('#modalActions button').forEach(btn => {
     btn.classList.remove('active');
     if (btn.dataset.status === status) btn.classList.add('active');
   });
 }
 
-function openModal(card) {
-  const raw = card.dataset.modal;
-  if (!raw) return;
-  let data;
-  try {
-    data = JSON.parse(decodeBase64Utf8(raw));
-  } catch (e) {
-    console.error('Failed to parse modal data:', e);
+function setModalActionState(status) {
+  document.querySelectorAll('#modalActions button').forEach(btn => {
+    btn.classList.remove('active');
+    if (btn.dataset.status === status) btn.classList.add('active');
+  });
+}
+
+function renderSeriesButton(button, target, label) {
+  const labelEl = button.querySelector('.modal__series-label');
+  const titleEl = button.querySelector('.modal__series-title');
+  const metaEl = button.querySelector('.modal__series-meta');
+
+  labelEl.textContent = label;
+
+  if (!target) {
+    button.hidden = true;
+    button.disabled = false;
+    button.dataset.malId = '';
+    titleEl.textContent = '';
+    metaEl.textContent = '';
     return;
   }
 
+  button.hidden = false;
+  button.dataset.malId = String(target.mal_id);
+  titleEl.textContent = getAnimeDisplayTitle(target);
+  metaEl.textContent = target.season_label || '';
+}
+
+function renderSeriesNavigation(seriesNav) {
+  const container = document.getElementById('modalSeriesNav');
+  const prevBtn = document.getElementById('modalPrevSeries');
+  const nextBtn = document.getElementById('modalNextSeries');
+
+  renderSeriesButton(prevBtn, seriesNav?.previous || null, '← Previous');
+  renderSeriesButton(nextBtn, seriesNav?.next || null, 'Next →');
+
+  container.hidden = prevBtn.hidden && nextBtn.hidden;
+}
+
+function setSeriesNavigationDisabled(disabled) {
+  document.querySelectorAll('.modal__series-btn').forEach(btn => {
+    if (!btn.hidden) {
+      btn.disabled = disabled;
+    }
+  });
+}
+
+function renderModalData(data, userStatus) {
   const currentLang = getCurrentLang();
 
   currentModalMalId = data.mal_id;
+  currentModalStatus = userStatus || '';
 
   const backdrop = document.getElementById('modalBackdrop');
   const title    = document.getElementById('modalTitle');
@@ -123,13 +202,12 @@ function openModal(card) {
   const scores   = document.getElementById('modalScores');
   const related  = document.getElementById('modalRelated');
   const countdown= document.getElementById('modalCountdown');
-  const status   = document.getElementById('modalStatus');
+  const statusBadge = document.getElementById('modalStatus');
   const episodes = document.getElementById('modalEpisodes');
-  const actions  = document.getElementById('modalActions');
 
-  title.textContent = data.title_en || data.title_jp || '';
+  title.textContent = getAnimeDisplayTitle(data);
   titleJp.textContent = currentLang === 'jp' ? '' : (data.title_jp || '');
-  titleRu.textContent = currentLang === 'ru' ? (data.title_ru || '') : '';
+  titleRu.textContent = currentLang === 'ru' ? '' : (data.title_ru || '');
   poster.src = data.poster_url || '';
   poster.alt = title.textContent;
 
@@ -194,8 +272,8 @@ function openModal(card) {
     episodes.textContent = `${data.episodes_total || '?'} eps`;
     episodes.style.display = 'inline';
   }
-  status.textContent = data.airing_status || '';
-  status.style.display = data.airing_status ? 'inline' : 'none';
+  statusBadge.textContent = data.airing_status || '';
+  statusBadge.style.display = data.airing_status ? 'inline' : 'none';
 
   related.innerHTML = '';
   if (data.related && data.related.length > 0) {
@@ -216,15 +294,66 @@ function openModal(card) {
     });
   }
 
-  const cardStatus = card.dataset.status || '';
-  actions.querySelectorAll('button').forEach(btn => {
-    btn.classList.remove('active');
-    if (btn.dataset.status === cardStatus) btn.classList.add('active');
-  });
+  renderSeriesNavigation(data.series_nav || null);
+  setModalActionState(currentModalStatus);
 
   backdrop.classList.add('open');
   document.body.style.overflow = 'hidden';
   updateCountdowns();
+}
+
+async function fetchAnimeDetails(malId) {
+  if (modalAnimeCache.has(malId)) {
+    return modalAnimeCache.get(malId);
+  }
+
+  const res = await fetch(`/api/anime/${malId}`);
+  if (!res.ok) {
+    throw new Error(`Failed to load anime ${malId}: ${res.status}`);
+  }
+
+  const data = await res.json();
+  modalAnimeCache.set(malId, data);
+  return data;
+}
+
+async function hydrateModalData(malId) {
+  const requestId = ++currentModalRequestId;
+  setSeriesNavigationDisabled(true);
+
+  try {
+    const data = await fetchAnimeDetails(malId);
+    if (requestId !== currentModalRequestId) return;
+
+    renderModalData(data, data.user_status);
+  } catch (err) {
+    if (requestId === currentModalRequestId) {
+      console.error('Failed to load anime details:', err);
+    }
+  } finally {
+    if (requestId === currentModalRequestId) {
+      setSeriesNavigationDisabled(false);
+    }
+  }
+}
+
+function navigateModalTo(malId) {
+  const card = getCardByMalId(malId);
+  const fallbackData = parseCardModalData(card);
+
+  if (fallbackData) {
+    renderModalData({ ...fallbackData, series_nav: null }, card.dataset.status || '');
+  }
+
+  hydrateModalData(malId);
+}
+
+function openModal(card) {
+  const data = parseCardModalData(card);
+  if (!data) return;
+
+  renderModalData({ ...data, series_nav: null }, card.dataset.status || '');
+  hydrateModalData(data.mal_id);
 }
 
 function closeModal() {
@@ -232,6 +361,8 @@ function closeModal() {
   backdrop.classList.remove('open');
   document.body.style.overflow = '';
   currentModalMalId = null;
+  currentModalStatus = '';
+  currentModalRequestId++;
 }
 
 function initModal() {
@@ -251,6 +382,15 @@ function initModal() {
       e.stopPropagation();
       const card = btn.closest('.card');
       openModal(card);
+    });
+  });
+
+  document.querySelectorAll('.modal__series-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetMalId = parseInt(btn.dataset.malId, 10);
+      if (!targetMalId) return;
+
+      navigateModalTo(targetMalId);
     });
   });
 

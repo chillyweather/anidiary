@@ -91,10 +91,24 @@
         <div class="modal__scores" id="modalScores"></div>
         <div id="modalRelated" class="modal__related"></div>
       </div>
-      <div class="modal__actions" id="modalActions">
-        <button class="btn btn--follow" data-status="following">♡ Follow</button>
-        <button class="btn btn--jellyfin" data-status="in_jellyfin">📦 Jellyfin</button>
-        <button class="btn btn--watched" data-status="watched">✓ Watched</button>
+      <div class="modal__footer">
+        <div class="modal__series-nav" id="modalSeriesNav" hidden>
+          <button class="btn modal__series-btn" id="modalPrevSeries" type="button" hidden>
+            <span class="modal__series-label"></span>
+            <span class="modal__series-title"></span>
+            <span class="modal__series-meta"></span>
+          </button>
+          <button class="btn modal__series-btn" id="modalNextSeries" type="button" hidden>
+            <span class="modal__series-label"></span>
+            <span class="modal__series-title"></span>
+            <span class="modal__series-meta"></span>
+          </button>
+        </div>
+        <div class="modal__actions" id="modalActions">
+          <button class="btn btn--follow" type="button" data-status="following">♡ Follow</button>
+          <button class="btn btn--jellyfin" type="button" data-status="in_jellyfin">📦 Jellyfin</button>
+          <button class="btn btn--watched" type="button" data-status="watched">✓ Watched</button>
+        </div>
       </div>
     </div>
   </div>
