@@ -500,20 +500,31 @@ function initSorting() {
 }
 
 function initLanguageToggle() {
+  const setLanguage = async (lang) => {
+    try {
+      const res = await fetch('/api/lang', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lang })
+      });
+      if (res.ok) window.location.reload();
+    } catch (err) {
+      console.error('Failed to change language:', err);
+    }
+  };
+
   document.querySelectorAll('.lang-toggle button').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const lang = btn.dataset.lang;
-      try {
-        const res = await fetch('/api/lang', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lang })
-        });
-        if (res.ok) window.location.reload();
-      } catch (err) {
-        console.error('Failed to change language:', err);
-      }
-    });
+    btn.addEventListener('click', () => setLanguage(btn.dataset.lang));
+  });
+
+  document.querySelectorAll('.language-select').forEach(select => {
+    select.addEventListener('change', () => setLanguage(select.value));
+  });
+}
+
+function initSeasonSelect() {
+  document.querySelectorAll('.season-select').forEach(select => {
+    select.addEventListener('change', () => window.location.assign(select.value));
   });
 }
 
@@ -533,4 +544,5 @@ document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initSorting();
   initLanguageToggle();
+  initSeasonSelect();
 });

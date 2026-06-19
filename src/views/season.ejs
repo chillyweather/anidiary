@@ -14,15 +14,27 @@
   <nav class="nav">
     <a class="nav__logo" href="/">anidiary</a>
     <div class="nav__season-picker">
-      <a href="/season/<%= adjacentSeasons.prevYear %>/<%= adjacentSeasons.prevSeason %>">
+      <a class="nav__season-link" href="/season/<%= adjacentSeasons.prevYear %>/<%= adjacentSeasons.prevSeason %>">
         ← <%= adjacentSeasons.prevSeason.charAt(0).toUpperCase() + adjacentSeasons.prevSeason.slice(1) %> <%= adjacentSeasons.prevYear %>
       </a>
       <span class="nav__current">
         <%= season.charAt(0).toUpperCase() + season.slice(1) %> <%= year %>
       </span>
-      <a href="/season/<%= adjacentSeasons.nextYear %>/<%= adjacentSeasons.nextSeason %>">
+      <a class="nav__season-link" href="/season/<%= adjacentSeasons.nextYear %>/<%= adjacentSeasons.nextSeason %>">
         <%= adjacentSeasons.nextSeason.charAt(0).toUpperCase() + adjacentSeasons.nextSeason.slice(1) %> <%= adjacentSeasons.nextYear %> →
       </a>
+      <label class="visually-hidden" for="season-select">Season</label>
+      <select class="nav-select season-select" id="season-select">
+        <option value="/season/<%= adjacentSeasons.prevYear %>/<%= adjacentSeasons.prevSeason %>">
+          <%= adjacentSeasons.prevSeason.charAt(0).toUpperCase() + adjacentSeasons.prevSeason.slice(1) %> '<%= String(adjacentSeasons.prevYear).slice(-2) %>
+        </option>
+        <option value="/season/<%= year %>/<%= season %>" selected>
+          <%= season.charAt(0).toUpperCase() + season.slice(1) %> '<%= String(year).slice(-2) %>
+        </option>
+        <option value="/season/<%= adjacentSeasons.nextYear %>/<%= adjacentSeasons.nextSeason %>">
+          <%= adjacentSeasons.nextSeason.charAt(0).toUpperCase() + adjacentSeasons.nextSeason.slice(1) %> '<%= String(adjacentSeasons.nextYear).slice(-2) %>
+        </option>
+      </select>
     </div>
     <div class="nav__right">
       <div class="lang-toggle">
@@ -30,10 +42,20 @@
         <button data-lang="jp" class="<%= user.langPref === 'jp' ? 'active' : '' %>">JP</button>
         <button data-lang="ru" class="<%= user.langPref === 'ru' ? 'active' : '' %>">RU</button>
       </div>
-      <span class="nav__user"><%= user.username %></span>
-      <form method="POST" action="/logout" class="logout-form">
-        <button type="submit" class="logout-btn">logout</button>
-      </form>
+      <label class="visually-hidden" for="language-select">Language</label>
+      <select class="nav-select language-select" id="language-select">
+        <option value="en" <%= user.langPref === 'en' ? 'selected' : '' %>>EN</option>
+        <option value="jp" <%= user.langPref === 'jp' ? 'selected' : '' %>>JP</option>
+        <option value="ru" <%= user.langPref === 'ru' ? 'selected' : '' %>>RU</option>
+      </select>
+      <details class="account-menu">
+        <summary class="nav__user"><%= user.username %></summary>
+        <div class="account-menu__panel">
+          <form method="POST" action="/logout" class="logout-form">
+            <button type="submit" class="logout-btn">Logout</button>
+          </form>
+        </div>
+      </details>
     </div>
   </nav>
 

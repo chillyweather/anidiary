@@ -305,20 +305,65 @@ body {
 }
 
 .nav__user {
+  display: block;
   color: var(--text-secondary);
   font-size: 0.875rem;
   font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
 }
 
-.nav__right a {
-  color: var(--accent);
-  text-decoration: none;
-  font-size: 0.875rem;
-  font-weight: 600;
+.nav__user::-webkit-details-marker {
+  display: none;
 }
 
-.nav__right a:hover {
-  text-decoration: underline;
+.nav__user::after {
+  content: ' ▾';
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+}
+
+.account-menu {
+  position: relative;
+}
+
+.account-menu__panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 110px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+}
+
+.nav-select {
+  display: none;
+  min-width: 0;
+  height: 34px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-alt);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .logout-form {
@@ -666,12 +711,53 @@ body {
 /* ─── Responsive ────────────────────────────────────────── */
 
 @media (max-width: 640px) {
-  .nav__season-picker a:not(.nav__current) {
+  .nav {
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  .nav__logo {
+    font-size: 1.125rem;
+  }
+
+  .nav__season-link,
+  .nav__current,
+  .lang-toggle {
     display: none;
   }
 
   .nav__season-picker {
-    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    max-width: 128px;
+  }
+
+  .nav-select {
+    display: block;
+  }
+
+  .season-select {
+    width: 128px;
+    max-width: 100%;
+  }
+
+  .language-select {
+    width: 62px;
+  }
+
+  .nav__right {
+    flex-shrink: 0;
+    gap: 8px;
+  }
+
+  .nav__user {
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .account-menu__panel {
+    top: calc(100% + 8px);
   }
 
   .main {
@@ -703,6 +789,26 @@ body {
   .card__actions .btn {
     flex: 1;
     text-align: center;
+  }
+}
+
+@media (max-width: 360px) {
+  .nav {
+    gap: 6px;
+    padding: 0 12px;
+  }
+
+  .nav__right {
+    gap: 6px;
+  }
+
+  .nav-select {
+    padding-right: 20px;
+    padding-left: 8px;
+  }
+
+  .language-select {
+    width: 54px;
   }
 }
 

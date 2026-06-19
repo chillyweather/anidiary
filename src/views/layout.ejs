@@ -23,10 +23,20 @@
         <button data-lang="jp" class="<%= user.langPref === 'jp' ? 'active' : '' %>">JP</button>
         <button data-lang="ru" class="<%= user.langPref === 'ru' ? 'active' : '' %>">RU</button>
       </div>
-      <span class="nav__user"><%= user.username %></span>
-      <form method="POST" action="/logout" class="logout-form">
-        <button type="submit" class="logout-btn">logout</button>
-      </form>
+      <label class="visually-hidden" for="language-select">Language</label>
+      <select class="nav-select language-select" id="language-select">
+        <option value="en" <%= user.langPref === 'en' ? 'selected' : '' %>>EN</option>
+        <option value="jp" <%= user.langPref === 'jp' ? 'selected' : '' %>>JP</option>
+        <option value="ru" <%= user.langPref === 'ru' ? 'selected' : '' %>>RU</option>
+      </select>
+      <details class="account-menu">
+        <summary class="nav__user"><%= user.username %></summary>
+        <div class="account-menu__panel">
+          <form method="POST" action="/logout" class="logout-form">
+            <button type="submit" class="logout-btn">Logout</button>
+          </form>
+        </div>
+      </details>
     </div>
   </nav>
   <% } %>
