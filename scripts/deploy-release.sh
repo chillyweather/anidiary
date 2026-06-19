@@ -41,8 +41,19 @@ export DB_PATH
 pm2 startOrReload "$RELEASE_DIR/ecosystem.config.js" --env production --update-env
 pm2 save
 
-if ! curl -fsS "http://127.0.0.1:${PORT:-3000}/login" >/dev/null; then
-  echo "Smoke check failed for $VERIFIED_SHA"
+SMOKE_URL="http://127.0.0.1:${PORT:-3000}/login"
+SMOKE_OK=false
+for attempt in $(seq 1 30); do
+  if curl -fsS --max-time 5 "$SMOKE_URL" >/dev/null 2>&1; then
+    SMOKE_OK=true
+    echo "Smoke check passed on attempt $attempt"
+    break
+  fi
+  sleep 1
+done
+
+if [ "$SMOKE_OK" != true ]; then
+  echo "Smoke check failed for $VERIFIED_SHA after 30 attempts"
   if [ "$HAS_VERIFIED_BACKUP" = true ]; then
     sqlite3 "$DB_PATH" ".restore '$BACKUP_PATH'"
     RESTORED_INTEGRITY=$(sqlite3 "$DB_PATH" 'PRAGMA integrity_check;')
