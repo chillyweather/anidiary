@@ -1,68 +1,117 @@
 name: Deploy
 
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   workflow_dispatch:
-  push:
-    branches:
-      - main
+    inputs:
+      commit_sha:
+        description: Full commit SHA that already passed CI
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
 
 concurrency:
   group: deploy-production
   cancel-in-progress: true
 
 jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.revision.outputs.commit_sha }}
+    steps:
+      - name: Resolve exact revision
+        id: revision
+        env:
+          REQUESTED_SHA: ${{ github.event.inputs.commit_sha }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          commit_sha="${VERIFIED_SHA:-$REQUESTED_SHA}"
+          if ! printf '%s' "$commit_sha" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo 'A full 40-character commit SHA is required'
+            exit 1
+          fi
+          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
+          echo "Verified revision candidate: $commit_sha"
+
+      - name: Require successful CI for manual deployment
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFIED_SHA: ${{ steps.revision.outputs.commit_sha }}
+        run: |
+          passed="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+            -f head_sha="$VERIFIED_SHA" -f status=completed -f per_page=100 \
+            --jq '[.workflow_runs[] | select(.head_sha == env.VERIFIED_SHA and .conclusion == "success")] | length')"
+          if [ "$passed" -lt 1 ]; then
+            echo "No successful CI run exists for $VERIFIED_SHA"
+            exit 1
+          fi
+          echo "CI verification passed for $VERIFIED_SHA"
+
   deploy:
+    needs: verify
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Log verified revision
+        env:
+          VERIFIED_SHA: ${{ needs.verify.outputs.commit_sha }}
+        run: echo "Deploying CI-verified revision $VERIFIED_SHA"
 
-      - name: Setup SSH key
+      - name: Checkout verified revision
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.verify.outputs.commit_sha }}
+
+      - name: Setup pinned SSH trust
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf "%s\n" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts
+          printf "%s\n" "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
 
-      - name: Sync files to server
+      - name: Stage verified release
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
           APP_DIR: ${{ secrets.APP_DIR }}
+          VERIFIED_SHA: ${{ needs.verify.outputs.commit_sha }}
         run: |
+          release_dir="${APP_DIR}/releases/${VERIFIED_SHA}"
+          ssh -o StrictHostKeyChecking=yes -p "${SERVER_PORT}" \
+            "${SERVER_USER}@${SERVER_HOST}" "mkdir -p '${release_dir}'"
           rsync -az --delete \
             --exclude ".git/" \
             --exclude ".github/" \
             --exclude "node_modules/" \
             --exclude ".env" \
-            --exclude "anidiary.db" \
-            --exclude "anidiary.db-*" \
-            --exclude "anidiary.db*" \
-            --exclude "db-reset-*/" \
             --exclude ".seed-progress.json" \
             --exclude ".seed-summary.json" \
             --exclude "*.log" \
-            -e "ssh -p ${SERVER_PORT}" \
-            ./ "${SERVER_USER}@${SERVER_HOST}:${APP_DIR}/"
+            -e "ssh -o StrictHostKeyChecking=yes -p ${SERVER_PORT}" \
+            ./ "${SERVER_USER}@${SERVER_HOST}:${release_dir}/"
 
-      - name: Install and restart app
+      - name: Prepare, back up, migrate, and release
         env:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
           APP_DIR: ${{ secrets.APP_DIR }}
+          VERIFIED_SHA: ${{ needs.verify.outputs.commit_sha }}
         run: |
-          ssh -p "${SERVER_PORT}" "${SERVER_USER}@${SERVER_HOST}" "set -e; \
-            mkdir -p '${APP_DIR}'; \
-            cd '${APP_DIR}'; \
-            npm ci --omit=dev; \
-            if command -v pm2 >/dev/null 2>&1; then \
-              pm2 startOrReload ecosystem.config.js --env production; \
-              pm2 save; \
-            else \
-              echo 'pm2 is not installed on server'; \
-              exit 1; \
-            fi"
+          release_dir="${APP_DIR}/releases/${VERIFIED_SHA}"
+          ssh -o StrictHostKeyChecking=yes -p "${SERVER_PORT}" \
+            "${SERVER_USER}@${SERVER_HOST}" \
+            "bash '${release_dir}/scripts/deploy-release.sh' '${APP_DIR}' '${release_dir}' '${VERIFIED_SHA}'"

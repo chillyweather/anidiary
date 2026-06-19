@@ -1,112 +1,8 @@
-<%
-  const isRussian = user.langPref === 'ru';
-  const seasonNames = isRussian
-    ? { winter: 'Зима', spring: 'Весна', summer: 'Лето', fall: 'Осень' }
-    : { winter: 'Winter', spring: 'Spring', summer: 'Summer', fall: 'Fall' };
-  const ui = isRussian ? {
-    season: 'Сезон',
-    language: 'Язык',
-    logout: 'Выйти',
-    all: 'Все',
-    following: 'Мои',
-    sortBy: 'Сортировка:',
-    malScore: 'Оценка MAL',
-    anilistScore: 'Оценка AniList',
-    shikimoriScore: 'Оценка Shikimori',
-    nextEpisode: 'Следующая серия',
-    title: 'Название',
-    close: 'Закрыть',
-    follow: 'Отслеживать',
-    jellyfin: 'Jellyfin',
-    watched: 'Просмотрено',
-    released: 'Вышло',
-    notAired: 'Не вышло',
-    tba: 'Неизвестно',
-    episodeShort: 'сер.',
-    showMore: 'Подробнее'
-  } : {
-    season: 'Season',
-    language: 'Language',
-    logout: 'Logout',
-    all: 'All',
-    following: 'Following',
-    sortBy: 'Sort by:',
-    malScore: 'MAL Score',
-    anilistScore: 'AniList Score',
-    shikimoriScore: 'Shikimori Score',
-    nextEpisode: 'Next Episode',
-    title: 'Title',
-    close: 'Close',
-    follow: 'Follow',
-    jellyfin: 'Jellyfin',
-    watched: 'Watched',
-    released: 'Released',
-    notAired: 'Not aired',
-    tba: 'TBA',
-    episodeShort: 'ep',
-    showMore: 'Show more'
-  };
-%>
 <!DOCTYPE html>
-<html lang="<%= isRussian ? 'ru' : 'en' %>">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title><%= seasonNames[season] %> <%= year %> - anidiary</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css">
-</head>
+<html lang="<%= ui.code %>">
+<%- include('partials/head', { title: ui.seasons[season] + ' ' + year, csrfToken }) %>
 <body>
-  <nav class="nav">
-    <a class="nav__logo" href="/">anidiary</a>
-    <div class="nav__season-picker">
-      <a class="nav__season-link" href="/season/<%= adjacentSeasons.prevYear %>/<%= adjacentSeasons.prevSeason %>">
-        ← <%= seasonNames[adjacentSeasons.prevSeason] %> <%= adjacentSeasons.prevYear %>
-      </a>
-      <span class="nav__current">
-        <%= seasonNames[season] %> <%= year %>
-      </span>
-      <a class="nav__season-link" href="/season/<%= adjacentSeasons.nextYear %>/<%= adjacentSeasons.nextSeason %>">
-        <%= seasonNames[adjacentSeasons.nextSeason] %> <%= adjacentSeasons.nextYear %> →
-      </a>
-      <label class="visually-hidden" for="season-select"><%= ui.season %></label>
-      <select class="nav-select season-select" id="season-select">
-        <option value="/season/<%= adjacentSeasons.prevYear %>/<%= adjacentSeasons.prevSeason %>">
-          <%= seasonNames[adjacentSeasons.prevSeason] %> '<%= String(adjacentSeasons.prevYear).slice(-2) %>
-        </option>
-        <option value="/season/<%= year %>/<%= season %>" selected>
-          <%= seasonNames[season] %> '<%= String(year).slice(-2) %>
-        </option>
-        <option value="/season/<%= adjacentSeasons.nextYear %>/<%= adjacentSeasons.nextSeason %>">
-          <%= seasonNames[adjacentSeasons.nextSeason] %> '<%= String(adjacentSeasons.nextYear).slice(-2) %>
-        </option>
-      </select>
-    </div>
-    <div class="nav__right">
-      <div class="lang-toggle">
-        <button data-lang="en" class="<%= user.langPref === 'en' ? 'active' : '' %>">EN</button>
-        <button data-lang="jp" class="<%= user.langPref === 'jp' ? 'active' : '' %>">JP</button>
-        <button data-lang="ru" class="<%= user.langPref === 'ru' ? 'active' : '' %>">RU</button>
-      </div>
-      <label class="visually-hidden" for="language-select"><%= ui.language %></label>
-      <select class="nav-select language-select" id="language-select">
-        <option value="en" <%= user.langPref === 'en' ? 'selected' : '' %>>EN</option>
-        <option value="jp" <%= user.langPref === 'jp' ? 'selected' : '' %>>JP</option>
-        <option value="ru" <%= user.langPref === 'ru' ? 'selected' : '' %>>RU</option>
-      </select>
-      <details class="account-menu">
-        <summary class="nav__user"><%= user.username %></summary>
-        <div class="account-menu__panel">
-          <form method="POST" action="/logout" class="logout-form">
-            <button type="submit" class="logout-btn"><%= ui.logout %></button>
-          </form>
-        </div>
-      </details>
-    </div>
-  </nav>
+  <%- include('partials/navigation', { ui, user, year, season, adjacentSeasons, csrfToken }) %>
 
   <main class="main">
     <div class="controls">
@@ -138,7 +34,7 @@
 
   <!-- Detail Modal -->
   <div class="modal-backdrop" id="modalBackdrop">
-    <div class="modal" id="animeModal" role="dialog" aria-modal="true">
+    <div class="modal" id="animeModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1" aria-busy="false">
       <div class="modal__header">
         <img class="modal__poster" id="modalPoster" src="" alt="">
         <div class="modal__info">
@@ -156,6 +52,7 @@
         <button class="modal__close" id="modalClose" aria-label="<%= ui.close %>">&times;</button>
       </div>
       <div class="modal__body">
+        <div class="modal__state" id="modalState" role="status" aria-live="polite"></div>
         <div id="modalSynopsisEn" class="modal__synopsis modal__synopsis-en"></div>
         <div id="modalSynopsisRu" class="modal__synopsis modal__synopsis-ru"></div>
         <div id="modalGenres" class="modal__genres"></div>
@@ -177,13 +74,13 @@
         </div>
         <div class="modal__actions" id="modalActions">
           <button class="btn btn--follow" type="button" data-status="following">♡ <%= ui.follow %></button>
-          <button class="btn btn--jellyfin" type="button" data-status="in_jellyfin">📦 <%= ui.jellyfin %></button>
+          <button class="btn btn--jellyfin" type="button" data-jellyfin="true">📦 <%= ui.jellyfin %></button>
           <button class="btn btn--watched" type="button" data-status="watched">✓ <%= ui.watched %></button>
         </div>
       </div>
     </div>
   </div>
 
-  <script src="/js/app.js"></script>
+  <%- include('partials/app-scripts', { localeJson }) %>
 </body>
 </html>

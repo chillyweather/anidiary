@@ -3,10 +3,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const { initDb } = require('../src/db/db');
-const { syncSeason } = require('../src/services/sync');
+const { createDatabase, DEFAULT_DB_PATH } = require('../src/db/db');
+const { createSyncService } = require('../src/services/sync');
+const { SEASONS } = require('../src/domain/seasons');
 
-const SEASONS = ['winter', 'spring', 'summer', 'fall'];
 const FROM = { year: 2009, season: 'winter' };
 const TO = { year: 2026, season: 'spring' };
 
@@ -63,7 +63,7 @@ function keyOf(item) {
   return `${item.year}-${item.season}`;
 }
 
-async function seedOne(year, season) {
+async function seedOne(syncSeason, year, season) {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       console.log(`\n[Seed] ${season} ${year} (attempt ${attempt}/${MAX_RETRIES})`);
@@ -84,7 +84,9 @@ async function seedOne(year, season) {
 
 async function main() {
   console.log(`[Seed] Range: ${FROM.season} ${FROM.year} -> ${TO.season} ${TO.year}`);
-  initDb();
+  const repository = createDatabase(process.env.DB_PATH || DEFAULT_DB_PATH);
+  repository.init();
+  const { syncSeason } = createSyncService({ repository });
 
   const range = buildSeasonRange(FROM, TO);
   const progress = loadProgress();
@@ -105,7 +107,7 @@ async function main() {
       continue;
     }
 
-    const out = await seedOne(item.year, item.season);
+    const out = await seedOne(syncSeason, item.year, item.season);
     processed++;
 
     if (out.ok) {
@@ -151,6 +153,7 @@ async function main() {
   console.log(`Row errors this run: ${totalErrors}`);
   console.log(`Progress file: ${progressPath}`);
   console.log(`Summary file:  ${summaryPath}`);
+  repository.close();
 }
 
 main().catch((err) => {

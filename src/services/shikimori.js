@@ -41,7 +41,7 @@ async function fetchAnime(malId) {
     });
 
     if (res.status === 404) {
-      return null;
+      return { record: null, error: null };
     }
 
     if (!res.ok) {
@@ -61,36 +61,38 @@ async function fetchAnime(malId) {
       titleRu = repairMojibake(he.decode(data.russian));
     }
 
-    return {
+    return { record: {
       mal_id: malId,
       title_ru: titleRu,
       synopsis_ru: synopsisRu,
       score_shiki: data.score ? parseFloat(data.score) : null
-    };
+    }, error: null };
   } catch (err) {
     console.error(`[Shikimori] Error fetching ${malId}:`, err.message);
-    return null;
+    return { record: null, error: { id: malId, message: err.message } };
   }
 }
 
 async function fetchBatch(malIds) {
   const dataMap = new Map();
+  const errors = [];
   const uniqueIds = [...new Set(malIds)].filter((id) => Number.isInteger(id) && id > 0);
 
   for (let i = 0; i < uniqueIds.length; i += CONCURRENCY) {
     const batch = uniqueIds.slice(i, i + CONCURRENCY);
     console.log(`[Shikimori] Fetching batch ${i + 1}–${i + batch.length} of ${uniqueIds.length}`);
     const results = await Promise.all(batch.map(id => fetchAnime(id)));
-    for (const data of results) {
-      if (data) {
-        dataMap.set(data.mal_id, data);
-        delete data.mal_id;
+    for (const result of results) {
+      if (result.error) errors.push(result.error);
+      if (result.record) {
+        const { mal_id: malId, ...data } = result.record;
+        dataMap.set(malId, data);
       }
     }
   }
 
   console.log(`[Shikimori] Fetched ${dataMap.size} of ${uniqueIds.length} entries`);
-  return dataMap;
+  return { records: dataMap, complete: errors.length === 0, errors };
 }
 
 module.exports = { fetchAnime, fetchBatch };

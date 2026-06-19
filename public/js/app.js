@@ -1,12 +1,12 @@
 let currentModalMalId = null;
 let currentModalStatus = '';
-let currentModalRequestId = 0;
-const modalAnimeCache = new Map();
+const localeCatalog = JSON.parse(document.getElementById('localeCatalog')?.textContent || '{}');
+const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+const detailLoader = window.DetailLoader.createDetailLoader(fetchAnimeDetails);
+let modalFocusController = null;
 
-function decodeBase64Utf8(value) {
-  const binary = atob(value);
-  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
-  return new TextDecoder('utf-8').decode(bytes);
+function jsonHeaders() {
+  return { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken };
 }
 
 function getCurrentLang() {
@@ -14,8 +14,12 @@ function getCurrentLang() {
   return active ? active.dataset.lang : 'en';
 }
 
-function uiText(english, russian) {
-  return getCurrentLang() === 'ru' ? russian : english;
+function uiText(key, values = {}) {
+  const template = key.split('.').reduce((value, part) => value?.[part], localeCatalog) || key;
+  return Object.entries(values).reduce(
+    (text, [name, value]) => text.replaceAll(`{${name}}`, value),
+    template
+  );
 }
 
 function formatSeasonLabel(seasonValue) {
@@ -24,57 +28,29 @@ function formatSeasonLabel(seasonValue) {
   const [season, year] = String(seasonValue).split('_');
   if (!season || !year) return String(seasonValue);
 
-  const names = getCurrentLang() === 'ru'
-    ? { winter: 'Зима', spring: 'Весна', summer: 'Лето', fall: 'Осень' }
-    : { winter: 'Winter', spring: 'Spring', summer: 'Summer', fall: 'Fall' };
-
-  return `${names[season] || season} ${year}`;
+  return `${localeCatalog.seasons?.[season] || season} ${year}`;
 }
 
 function translateAiringStatus(status) {
-  if (getCurrentLang() !== 'ru') return status || '';
-
-  const statuses = {
-    'Finished Airing': 'Завершено',
-    'Currently Airing': 'Выходит',
-    'Not yet aired': 'Ещё не вышло',
-    'Cancelled': 'Отменено'
-  };
-
-  return statuses[status] || status || '';
+  return localeCatalog.airingStatuses?.[status] || status || '';
 }
 
 function translateRelation(relation) {
-  if (getCurrentLang() !== 'ru') return relation || '';
-
-  const relations = {
-    'adaptation': 'Адаптация',
-    'alternative setting': 'Альтернативный мир',
-    'alternative version': 'Альтернативная версия',
-    'character': 'Персонаж',
-    'full story': 'Полная история',
-    'other': 'Другое',
-    'parent story': 'Основная история',
-    'prequel': 'Приквел',
-    'sequel': 'Сиквел',
-    'side story': 'Побочная история',
-    'spin-off': 'Спин-офф',
-    'summary': 'Краткое содержание'
-  };
-
-  return relations[String(relation || '').toLowerCase()] || relation || '';
+  return localeCatalog.relations?.[String(relation || '').toLowerCase()] || relation || '';
 }
 
 function formatEpisodeCount(count) {
-  if (getCurrentLang() !== 'ru') return `${count} eps`;
-
   const numericCount = Number(count);
+  if (localeCatalog.code !== 'ru') {
+    const noun = numericCount === 1 ? localeCatalog.episodeForms[0] : localeCatalog.episodeForms[1];
+    return `${count} ${noun}`;
+  }
   const mod10 = numericCount % 10;
   const mod100 = numericCount % 100;
-  let noun = 'серий';
+  let noun = localeCatalog.episodeForms[2];
 
-  if (mod10 === 1 && mod100 !== 11) noun = 'серия';
-  else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) noun = 'серии';
+  if (mod10 === 1 && mod100 !== 11) noun = localeCatalog.episodeForms[0];
+  else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) noun = localeCatalog.episodeForms[1];
 
   return `${count} ${noun}`;
 }
@@ -97,18 +73,6 @@ function getCardByMalId(malId) {
   return document.querySelector(`.card[data-mal-id="${malId}"]`);
 }
 
-function parseCardModalData(card) {
-  const raw = card?.dataset.modal;
-  if (!raw) return null;
-
-  try {
-    return JSON.parse(decodeBase64Utf8(raw));
-  } catch (err) {
-    console.error('Failed to parse modal data:', err);
-    return null;
-  }
-}
-
 function updateCountdowns() {
   document.querySelectorAll('.countdown-timer').forEach(el => {
     const target = parseInt(el.dataset.timestamp, 10) * 1000;
@@ -116,7 +80,7 @@ function updateCountdowns() {
     const diff = target - Date.now();
 
     if (diff <= 0) {
-      el.textContent = uiText('Released', 'Вышло');
+      el.textContent = uiText('released');
       return;
     }
 
@@ -125,21 +89,20 @@ function updateCountdowns() {
     const mins = Math.floor((diff % 3600000) / 60000);
 
     if (days > 0) {
-      el.textContent = uiText(`in ${days}d ${hrs}h`, `через ${days} д. ${hrs} ч.`);
+      el.textContent = uiText('countdown.days', { days, hours: hrs });
     } else if (hrs > 0) {
-      el.textContent = uiText(`in ${hrs}h ${mins}m`, `через ${hrs} ч. ${mins} мин.`);
+      el.textContent = uiText('countdown.hours', { hours: hrs, minutes: mins });
     } else {
-      el.textContent = uiText(`in ${mins}m`, `через ${mins} мин.`);
+      el.textContent = uiText('countdown.minutes', { minutes: mins });
     }
   });
 }
 
 function setCardStatusClass(card, status) {
-  card.classList.remove('card--following', 'card--jellyfin', 'card--watched', 'card--in_jellyfin');
+  card.classList.remove('card--following', 'card--watched');
 
   const statusClassMap = {
     following: 'card--following',
-    in_jellyfin: 'card--jellyfin',
     watched: 'card--watched'
   };
 
@@ -150,7 +113,7 @@ function setCardStatusClass(card, status) {
 }
 
 function initStatusButtons() {
-  document.querySelectorAll('.card__actions button').forEach(btn => {
+  document.querySelectorAll('.card__actions button[data-status]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const card    = btn.closest('.card');
       const malId   = parseInt(card.dataset.malId, 10);
@@ -161,13 +124,13 @@ function initStatusButtons() {
       try {
         const res  = await fetch('/api/mark', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: jsonHeaders(),
           body: JSON.stringify({ mal_id: malId, status: newStatus })
         });
         const data = await res.json();
 
         if (data.ok) {
-          btn.closest('.card__actions').querySelectorAll('button').forEach(b => b.classList.remove('active'));
+          btn.closest('.card__actions').querySelectorAll('button[data-status]').forEach(b => b.classList.remove('active'));
           if (newStatus !== 'none') {
             btn.classList.add('active');
           }
@@ -187,8 +150,41 @@ function initStatusButtons() {
   });
 }
 
+function setJellyfinState(malId, available) {
+  const card = getCardByMalId(malId);
+  if (card) {
+    card.classList.toggle('card--jellyfin', available);
+    const button = card.querySelector('[data-jellyfin]');
+    if (button) button.classList.toggle('active', available);
+  }
+  if (currentModalMalId === malId) {
+    document.querySelector('#modalActions [data-jellyfin]')?.classList.toggle('active', available);
+  }
+  const cached = detailLoader.cache.get(malId);
+  if (cached) cached.in_jellyfin = available;
+}
+
+function initJellyfinButtons() {
+  document.querySelectorAll('[data-jellyfin]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const card = button.closest('.card');
+      const malId = card ? Number(card.dataset.malId) : currentModalMalId;
+      const available = !button.classList.contains('active');
+      try {
+        const response = await fetch('/api/jellyfin', {
+          method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ mal_id: malId, available })
+        });
+        const result = await response.json();
+        if (result.ok) setJellyfinState(malId, result.available);
+      } catch (error) {
+        console.error('Failed to update Jellyfin availability:', error);
+      }
+    });
+  });
+}
+
 function syncModalStatus(malId, status) {
-  const cached = modalAnimeCache.get(malId);
+  const cached = detailLoader.cache.get(malId);
   if (cached) {
     cached.user_status = status || null;
   }
@@ -196,14 +192,14 @@ function syncModalStatus(malId, status) {
   if (currentModalMalId !== malId) return;
 
   currentModalStatus = status || '';
-  document.querySelectorAll('#modalActions button').forEach(btn => {
+  document.querySelectorAll('#modalActions button[data-status]').forEach(btn => {
     btn.classList.remove('active');
     if (btn.dataset.status === status) btn.classList.add('active');
   });
 }
 
 function setModalActionState(status) {
-  document.querySelectorAll('#modalActions button').forEach(btn => {
+  document.querySelectorAll('#modalActions button[data-status]').forEach(btn => {
     btn.classList.remove('active');
     if (btn.dataset.status === status) btn.classList.add('active');
   });
@@ -236,8 +232,8 @@ function renderSeriesNavigation(seriesNav) {
   const prevBtn = document.getElementById('modalPrevSeries');
   const nextBtn = document.getElementById('modalNextSeries');
 
-  renderSeriesButton(prevBtn, seriesNav?.previous || null, uiText('← Previous', '← Предыдущее'));
-  renderSeriesButton(nextBtn, seriesNav?.next || null, uiText('Next →', 'Следующее →'));
+  renderSeriesButton(prevBtn, seriesNav?.previous || null, `← ${uiText('previousSeries')}`);
+  renderSeriesButton(nextBtn, seriesNav?.next || null, `${uiText('nextSeries')} →`);
 
   container.hidden = prevBtn.hidden && nextBtn.hidden;
 }
@@ -269,6 +265,7 @@ function renderModalData(data, userStatus) {
   const countdown= document.getElementById('modalCountdown');
   const statusBadge = document.getElementById('modalStatus');
   const episodes = document.getElementById('modalEpisodes');
+  const state = document.getElementById('modalState');
 
   title.textContent = getAnimeDisplayTitle(data);
   titleJp.textContent = currentLang === 'jp' ? '' : (data.title_jp || '');
@@ -277,14 +274,14 @@ function renderModalData(data, userStatus) {
   poster.alt = title.textContent;
 
   if (currentLang === 'ru') {
-    synRu.style.display = data.synopsis_ru ? 'block' : 'none';
+    synRu.hidden = !data.synopsis_ru;
     synRu.textContent = data.synopsis_ru || '';
-    synEn.style.display = data.synopsis_ru ? 'none' : (data.synopsis_en ? 'block' : 'none');
+    synEn.hidden = Boolean(data.synopsis_ru) || !data.synopsis_en;
     synEn.textContent = data.synopsis_ru ? '' : (data.synopsis_en || '');
   } else {
-    synEn.style.display = data.synopsis_en ? 'block' : (data.synopsis_ru ? 'block' : 'none');
+    synEn.hidden = !(data.synopsis_en || data.synopsis_ru);
     synEn.textContent = data.synopsis_en || data.synopsis_ru || '';
-    synRu.style.display = 'none';
+    synRu.hidden = true;
     synRu.textContent = '';
   }
 
@@ -321,82 +318,112 @@ function renderModalData(data, userStatus) {
 
   const now = Math.floor(Date.now() / 1000);
   if (data.next_ep_at && data.next_ep_at > now) {
-    countdown.innerHTML = `<span class="countdown-timer" data-timestamp="${data.next_ep_at}">${uiText('loading…', 'загрузка…')}</span>`;
+    countdown.innerHTML = `<span class="countdown-timer" data-timestamp="${data.next_ep_at}">${uiText('loading')}</span>`;
     countdown.className = 'card__countdown';
-    episodes.textContent = `${uiText('Episode', 'Серия')} ${data.next_ep_num || '?'}/${data.episodes_total || '?'}`;
-    episodes.style.display = 'inline';
+    episodes.textContent = `${uiText('episode')} ${data.next_ep_num || '?'}/${data.episodes_total || '?'}`;
+    episodes.hidden = false;
   } else {
     countdown.innerHTML = '';
     if (data.airing_status === 'Finished Airing') {
-      countdown.innerHTML = `<span class="card__countdown countdown--released"><span>${uiText('Released', 'Вышло')}</span></span>`;
+      countdown.innerHTML = `<span class="card__countdown countdown--released"><span>${uiText('released')}</span></span>`;
     } else if (data.airing_status === 'Not yet aired') {
-      countdown.innerHTML = `<span class="card__countdown countdown--not-aired"><span>${uiText('Not aired', 'Не вышло')}</span></span>`;
+      countdown.innerHTML = `<span class="card__countdown countdown--not-aired"><span>${uiText('notAired')}</span></span>`;
     } else {
-      countdown.innerHTML = `<span class="card__countdown countdown--tba"><span>${uiText('TBA', 'Неизвестно')}</span></span>`;
+      countdown.innerHTML = `<span class="card__countdown countdown--tba"><span>${uiText('tba')}</span></span>`;
     }
     episodes.textContent = formatEpisodeCount(data.episodes_total || '?');
-    episodes.style.display = 'inline';
+    episodes.hidden = false;
   }
   statusBadge.textContent = translateAiringStatus(data.airing_status);
-  statusBadge.style.display = data.airing_status ? 'inline' : 'none';
+  statusBadge.hidden = !data.airing_status;
 
   related.innerHTML = '';
   if (data.related && data.related.length > 0) {
     const sectionTitle = document.createElement('div');
     sectionTitle.className = 'modal__section-title';
-    sectionTitle.textContent = uiText('Related Series', 'Связанные аниме');
+    sectionTitle.textContent = uiText('relatedSeries');
     related.appendChild(sectionTitle);
-    data.related.forEach(r => {
-      r.entries && r.entries.forEach(e => {
-        const item = document.createElement('div');
-        item.className = 'modal__related-item';
-        item.innerHTML = `
-          <span class="modal__related-type">${translateRelation(r.relation)}</span>
-          <span class="modal__related-title">${e.title}</span>
-        `;
-        related.appendChild(item);
-      });
-    });
+    const items = document.createElement('div');
+    related.appendChild(items);
+    window.ModalRendering.renderRelated(items, data.related, translateRelation);
   }
 
   renderSeriesNavigation(data.series_nav || null);
   setModalActionState(currentModalStatus);
+  setJellyfinState(data.mal_id, Boolean(data.in_jellyfin));
+
+  const hasAdditionalDetails = Boolean(
+    data.synopsis_en || data.synopsis_ru || data.genres?.length || data.related?.length
+    || data.score_mal || data.score_anilist || data.score_shiki
+  );
+  state.hidden = hasAdditionalDetails;
+  state.dataset.state = hasAdditionalDetails ? 'success' : 'empty';
+  state.textContent = hasAdditionalDetails ? '' : uiText('noDetails');
+  document.getElementById('animeModal').setAttribute('aria-busy', 'false');
 
   backdrop.classList.add('open');
-  document.body.style.overflow = 'hidden';
+  document.body.classList.add('modal-open');
   updateCountdowns();
 }
 
 async function fetchAnimeDetails(malId) {
-  if (modalAnimeCache.has(malId)) {
-    return modalAnimeCache.get(malId);
-  }
-
   const res = await fetch(`/api/anime/${malId}`);
   if (!res.ok) {
     throw new Error(`Failed to load anime ${malId}: ${res.status}`);
   }
 
   const data = await res.json();
-  modalAnimeCache.set(malId, data);
   return data;
 }
 
-async function hydrateModalData(malId) {
-  const requestId = ++currentModalRequestId;
+function showModalLoading(malId, status, { preserveNavigation = false } = {}) {
+  currentModalMalId = malId;
+  currentModalStatus = status || '';
+  document.getElementById('modalTitle').textContent = '';
+  document.getElementById('modalTitleJp').textContent = '';
+  document.getElementById('modalTitleRu').textContent = '';
+  document.getElementById('modalPoster').removeAttribute('src');
+  document.getElementById('modalSynopsisEn').textContent = '';
+  document.getElementById('modalSynopsisRu').textContent = '';
+  document.getElementById('modalGenres').replaceChildren();
+  document.getElementById('modalScores').replaceChildren();
+  document.getElementById('modalRelated').replaceChildren();
+  document.getElementById('modalCountdown').replaceChildren();
+  document.getElementById('modalStatus').textContent = '';
+  document.getElementById('modalEpisodes').textContent = '';
+  if (!preserveNavigation) renderSeriesNavigation(null);
+  setModalActionState(currentModalStatus);
+
+  const state = document.getElementById('modalState');
+  state.hidden = false;
+  state.dataset.state = 'loading';
+  state.textContent = uiText('loading');
+  document.getElementById('animeModal').setAttribute('aria-busy', 'true');
+  document.getElementById('modalBackdrop').classList.add('open');
+  document.body.classList.add('modal-open');
+}
+
+async function hydrateModalData(malId, { focusAfterLoad = false } = {}) {
+  const { requestId, promise } = detailLoader.begin(malId);
   setSeriesNavigationDisabled(true);
 
   try {
-    const data = await fetchAnimeDetails(malId);
-    if (requestId !== currentModalRequestId) return;
+    const data = await promise;
+    if (!detailLoader.isCurrent(requestId)) return;
 
     renderModalData(data, data.user_status);
+    if (focusAfterLoad) modalFocusController.focusInitial();
   } catch (err) {
-    if (requestId === currentModalRequestId) {
+    if (detailLoader.isCurrent(requestId)) {
       console.error('Failed to load anime details:', err);
+      const state = document.getElementById('modalState');
+      state.hidden = false;
+      state.dataset.state = 'error';
+      state.textContent = uiText('loadDetailsFailed');
+      document.getElementById('animeModal').setAttribute('aria-busy', 'false');
     }
   } finally {
-    if (requestId === currentModalRequestId) {
+    if (detailLoader.isCurrent(requestId)) {
       setSeriesNavigationDisabled(false);
     }
   }
@@ -404,49 +431,49 @@ async function hydrateModalData(malId) {
 
 function navigateModalTo(malId) {
   const card = getCardByMalId(malId);
-  const fallbackData = parseCardModalData(card);
+  showModalLoading(malId, card?.dataset.status || '', { preserveNavigation: true });
+  hydrateModalData(malId, { focusAfterLoad: true });
+}
 
-  if (fallbackData) {
-    renderModalData({ ...fallbackData, series_nav: null }, card.dataset.status || '');
-  }
-
+function openModal(card, opener) {
+  const malId = parseInt(card.dataset.malId, 10);
+  if (!malId) return;
+  showModalLoading(malId, card.dataset.status || '');
+  modalFocusController.open(opener);
   hydrateModalData(malId);
 }
 
-function openModal(card) {
-  const data = parseCardModalData(card);
-  if (!data) return;
-
-  renderModalData({ ...data, series_nav: null }, card.dataset.status || '');
-  hydrateModalData(data.mal_id);
+function hideModal() {
+  const backdrop = document.getElementById('modalBackdrop');
+  backdrop.classList.remove('open');
+  document.body.classList.remove('modal-open');
+  currentModalMalId = null;
+  currentModalStatus = '';
+  detailLoader.cancel();
 }
 
 function closeModal() {
-  const backdrop = document.getElementById('modalBackdrop');
-  backdrop.classList.remove('open');
-  document.body.style.overflow = '';
-  currentModalMalId = null;
-  currentModalStatus = '';
-  currentModalRequestId++;
+  if (modalFocusController) modalFocusController.close();
+  else hideModal();
 }
 
 function initModal() {
   const backdrop = document.getElementById('modalBackdrop');
+  const modal = document.getElementById('animeModal');
   const closeBtn = document.getElementById('modalClose');
+  modalFocusController = window.ModalFocus.createModalFocus({ backdrop, modal, onClose: hideModal });
 
   closeBtn.addEventListener('click', closeModal);
   backdrop.addEventListener('click', (e) => {
     if (e.target === backdrop) closeModal();
   });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeModal();
-  });
+  document.addEventListener('keydown', modalFocusController.handleKeydown);
 
   document.querySelectorAll('.btn--more').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const card = btn.closest('.card');
-      openModal(card);
+      openModal(card, btn);
     });
   });
 
@@ -459,7 +486,7 @@ function initModal() {
     });
   });
 
-  document.getElementById('modalActions').querySelectorAll('button').forEach(btn => {
+  document.getElementById('modalActions').querySelectorAll('button[data-status]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const malId     = currentModalMalId;
       const status   = btn.dataset.status;
@@ -469,14 +496,14 @@ function initModal() {
       try {
         const res  = await fetch('/api/mark', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: jsonHeaders(),
           body: JSON.stringify({ mal_id: malId, status: newStatus })
         });
         const data = await res.json();
         if (data.ok) {
           const card = document.querySelector(`.card[data-mal-id="${malId}"]`);
           if (card) {
-            card.querySelectorAll('.card__actions button').forEach(b => b.classList.remove('active'));
+            card.querySelectorAll('.card__actions button[data-status]').forEach(b => b.classList.remove('active'));
             if (newStatus !== 'none') {
               btn.classList.add('active');
               const cardButton = card.querySelector(`.card__actions button[data-status="${newStatus}"]`);
@@ -569,7 +596,7 @@ function initLanguageToggle() {
     try {
       const res = await fetch('/api/lang', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: jsonHeaders(),
         body: JSON.stringify({ lang })
       });
       if (res.ok) window.location.reload();
@@ -597,7 +624,7 @@ function updateFollowingCount() {
   const tab = document.querySelector('.tab[data-tab="following"]');
   if (!tab) return;
   const count = document.querySelectorAll('.card[data-followed="true"]').length;
-  tab.textContent = `${uiText('Following', 'Мои')} (${count})`;
+  tab.textContent = `${uiText('following')} (${count})`;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -605,6 +632,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(updateCountdowns, 1000);
 
   initStatusButtons();
+  initJellyfinButtons();
   initModal();
   initTabs();
   initSorting();

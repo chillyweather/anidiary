@@ -950,6 +950,19 @@ body {
   gap: 16px;
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
+.modal__state {
+  color: var(--text-secondary);
+  padding: 12px 0;
+}
+
+.modal__state[data-state="error"] {
+  color: #b42318;
+}
+
 .modal__section-title {
   font-size: 0.75rem;
   font-weight: 700;

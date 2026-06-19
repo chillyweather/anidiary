@@ -1,5 +1,6 @@
 const ANILIST_URL = 'https://graphql.anilist.co';
 const REQUEST_TIMEOUT_MS = 15000;
+const { toAniListSeason } = require('../domain/seasons');
 
 const SEASON_QUERY = `
   query ($season: MediaSeason, $year: Int, $page: Int) {
@@ -22,17 +23,11 @@ const SEASON_QUERY = `
 
 async function fetchSeason(season, year) {
   const dataMap = new Map();
+  const errors = [];
   let page = 1;
   let hasNextPage = true;
 
-  const seasonMap = {
-    winter: 'WINTER',
-    spring: 'SPRING',
-    summer: 'SUMMER',
-    fall: 'FALL'
-  };
-
-  const anilistSeason = seasonMap[season.toLowerCase()] || season.toUpperCase();
+  const anilistSeason = toAniListSeason(season);
 
   while (hasNextPage) {
     console.log(`[AniList] Fetching ${anilistSeason} ${year}, page ${page}`);
@@ -71,6 +66,10 @@ async function fetchSeason(season, year) {
 
       const pageData = result.data.Page;
 
+      if (!Array.isArray(pageData.media) || typeof pageData.pageInfo?.hasNextPage !== 'boolean') {
+        throw new Error('AniList Page data is malformed');
+      }
+
       for (const media of pageData.media) {
         if (!media.idMal) continue;
         
@@ -98,12 +97,13 @@ async function fetchSeason(season, year) {
       page++;
     } catch (err) {
       console.error(`[AniList] Error:`, err.message);
+      errors.push({ page, message: err.message });
       break;
     }
   }
 
   console.log(`[AniList] Fetched ${dataMap.size} anime entries`);
-  return dataMap;
+  return { records: dataMap, complete: errors.length === 0, errors };
 }
 
 module.exports = { fetchSeason };

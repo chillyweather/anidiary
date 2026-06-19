@@ -24,7 +24,7 @@
 
   const cardStatusClasses = [];
   if (userStatus === 'following') cardStatusClasses.push('card--following');
-  if (userStatus === 'in_jellyfin') cardStatusClasses.push('card--jellyfin');
+  if (anime.in_jellyfin) cardStatusClasses.push('card--jellyfin');
   if (userStatus === 'watched') cardStatusClasses.push('card--watched');
   const cardClass = cardStatusClasses.length > 0 ? cardStatusClasses.join(' ') : '';
 
@@ -39,32 +39,8 @@
     countdownBadge = ui.tba;
   }
 
-  const genres = JSON.parse(anime.genres || '[]');
-
-  const related = anime.related ? JSON.parse(anime.related) : [];
   const currentSeasonCard = typeof isCurrentSeason === 'undefined' ? true : Boolean(isCurrentSeason);
   const initiallyHiddenCard = typeof initiallyHidden === 'undefined' ? false : Boolean(initiallyHidden);
-
-  const modalData = {
-    mal_id: anime.mal_id,
-    title_en: anime.title_en,
-    title_jp: anime.title_jp,
-    title_ru: anime.title_ru,
-    synopsis_en: synopsisEn,
-    synopsis_ru: synopsisRu,
-    poster_url: anime.poster_url,
-    score_mal: anime.score_mal,
-    score_anilist: anime.score_anilist,
-    score_shiki: anime.score_shiki,
-    anilist_id: anime.anilist_id,
-    episodes_total: anime.episodes_total,
-    airing_status: anime.airing_status,
-    airing_day: anime.airing_day,
-    next_ep_num: anime.next_ep_num,
-    next_ep_at: anime.next_ep_at,
-    genres: genres,
-    related: related
-  };
 %>
 
 <div
@@ -77,7 +53,6 @@
   data-score-shiki="<%= anime.score_shiki || 0 %>"
   data-next-ep-at="<%= anime.next_ep_at || 0 %>"
   data-status="<%= userStatus || '' %>"
-  data-modal="<%= Buffer.from(JSON.stringify(modalData)).toString('base64') %>"
 >
   <img class="card__poster" src="<%= anime.poster_url %>" alt="<%= title %>" loading="lazy">
   <div class="card__body">
@@ -115,7 +90,7 @@
       <button class="btn btn--follow <%= userStatus === 'following' ? 'active' : '' %>" data-status="following">
         ♡ <%= ui.follow %>
       </button>
-      <button class="btn btn--jellyfin <%= userStatus === 'in_jellyfin' ? 'active' : '' %>" data-status="in_jellyfin">
+      <button class="btn btn--jellyfin <%= anime.in_jellyfin ? 'active' : '' %>" data-jellyfin="true">
         📦 <%= ui.jellyfin %>
       </button>
       <button class="btn btn--watched <%= userStatus === 'watched' ? 'active' : '' %>" data-status="watched">

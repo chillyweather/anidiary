@@ -1,21 +1,18 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
-const router = express.Router();
-const { createUser, getUserByUsername } = require('../db/db');
+const { csrfProtection, newCsrfToken } = require('../middleware/csrf');
 
 const BCRYPT_ROUNDS = 12;
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many attempts, try again later' }
-});
-
 function normalizeUsername(username) {
   return String(username || '').trim();
+}
+
+function validatePassword(password) {
+  if (password.length < 12) return 'Password must be at least 12 characters';
+  if (Buffer.byteLength(password, 'utf8') > 72) return 'Password must be at most 72 UTF-8 bytes';
+  return null;
 }
 
 function setAuthenticatedSession(req, user) {
@@ -29,10 +26,22 @@ function setAuthenticatedSession(req, user) {
       req.session.userId = user.id;
       req.session.username = user.username;
       req.session.langPref = user.lang_pref || 'en';
+      req.session.csrfToken = newCsrfToken();
       resolve();
     });
   });
 }
+
+function createAuthRouter(repository, { registrationOpen = true, authRateLimitMax = 10 } = {}) {
+const router = express.Router();
+const { createUser, getUserByUsername } = repository;
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: authRateLimitMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts, try again later' }
+});
 
 router.get('/login', (req, res) => {
   if (req.session && req.session.userId) {
@@ -41,7 +50,7 @@ router.get('/login', (req, res) => {
   res.render('login', { error: null });
 });
 
-router.post('/login', authLimiter, async (req, res) => {
+router.post('/login', csrfProtection, authLimiter, async (req, res) => {
   try {
     const username = normalizeUsername(req.body.username);
     const password = String(req.body.password || '');
@@ -70,14 +79,20 @@ router.post('/login', authLimiter, async (req, res) => {
 });
 
 router.get('/register', (req, res) => {
+  if (!registrationOpen) {
+    return res.status(404).render('error', { error: 'Registration is closed' });
+  }
   if (req.session && req.session.userId) {
     return res.redirect('/');
   }
   res.render('register', { error: null });
 });
 
-router.post('/register', authLimiter, async (req, res) => {
+router.post('/register', csrfProtection, authLimiter, async (req, res) => {
   try {
+    if (!registrationOpen) {
+      return res.status(403).render('error', { error: 'Registration is closed' });
+    }
     const username = normalizeUsername(req.body.username);
     const password = String(req.body.password || '');
 
@@ -93,9 +108,8 @@ router.post('/register', authLimiter, async (req, res) => {
       return res.render('register', { error: 'Username can only contain letters, numbers, and underscores' });
     }
 
-    if (password.length < 6) {
-      return res.render('register', { error: 'Password must be at least 6 characters' });
-    }
+    const passwordError = validatePassword(password);
+    if (passwordError) return res.status(400).render('register', { error: passwordError });
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const result = createUser(username, passwordHash);
@@ -112,11 +126,14 @@ router.post('/register', authLimiter, async (req, res) => {
   }
 });
 
-router.post('/logout', (req, res) => {
+router.post('/logout', csrfProtection, (req, res) => {
   req.session.destroy(() => {
     res.clearCookie('anidiary.sid');
     res.redirect('/login');
   });
 });
 
-module.exports = router;
+return router;
+}
+
+module.exports = { createAuthRouter, validatePassword };

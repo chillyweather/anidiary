@@ -2,8 +2,9 @@ const path = require('path');
 
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
-const { syncSeason, getCurrentSeason } = require('../src/services/sync');
-const { initDb } = require('../src/db/db');
+const { createSyncService } = require('../src/services/sync');
+const { getCurrentSeason } = require('../src/domain/seasons');
+const { createDatabase, DEFAULT_DB_PATH } = require('../src/db/db');
 
 const args = process.argv.slice(2);
 let year = args[0] ? parseInt(args[0]) : null;
@@ -17,8 +18,9 @@ if (!year || !season) {
 
 async function main() {
   console.log(`Seeding database with ${season} ${year} anime...`);
-  
-  initDb();
+  const repository = createDatabase(process.env.DB_PATH || DEFAULT_DB_PATH);
+  repository.init();
+  const { syncSeason } = createSyncService({ repository });
   
   try {
     const result = await syncSeason(year, season);
@@ -26,10 +28,11 @@ async function main() {
     if (result.errors > 0) {
       console.log(`Errors: ${result.errors}`);
     }
-    process.exit(0);
+    repository.close();
   } catch (err) {
     console.error('Seed failed:', err);
-    process.exit(1);
+    repository.close();
+    process.exitCode = 1;
   }
 }
 
