@@ -32,11 +32,11 @@
   if (anime.next_ep_at && anime.next_ep_at > Math.floor(Date.now() / 1000)) {
     countdownBadge = '';
   } else if (anime.airing_status === 'Finished Airing') {
-    countdownBadge = 'Released';
+    countdownBadge = ui.released;
   } else if (anime.airing_status === 'Not yet aired') {
-    countdownBadge = 'Not aired';
+    countdownBadge = ui.notAired;
   } else {
-    countdownBadge = 'TBA';
+    countdownBadge = ui.tba;
   }
 
   const genres = JSON.parse(anime.genres || '[]');
@@ -94,7 +94,7 @@
     <% if (anime.next_ep_at && anime.next_ep_at > Math.floor(Date.now() / 1000)) { %>
       <div class="card__countdown">
         <span class="countdown-timer" data-timestamp="<%= anime.next_ep_at %>">—</span>
-        <span class="countdown-ep">ep <%= anime.next_ep_num %>/<%= anime.episodes_total || '?' %></span>
+        <span class="countdown-ep"><%= ui.episodeShort %> <%= anime.next_ep_num %>/<%= anime.episodes_total || '?' %></span>
       </div>
     <% } else { %>
       <div class="card__countdown <%= countdownClass %>">
@@ -110,16 +110,16 @@
       <% } %>
     </div>
     <p class="card__synopsis"><%= synopsisShort %></p>
-    <button class="btn btn--more" data-moreless="more">Show more ▾</button>
+    <button class="btn btn--more" data-moreless="more"><%= ui.showMore %> ▾</button>
     <div class="card__actions">
       <button class="btn btn--follow <%= userStatus === 'following' ? 'active' : '' %>" data-status="following">
-        ♡ Follow
+        ♡ <%= ui.follow %>
       </button>
       <button class="btn btn--jellyfin <%= userStatus === 'in_jellyfin' ? 'active' : '' %>" data-status="in_jellyfin">
-        📦 Jellyfin
+        📦 <%= ui.jellyfin %>
       </button>
       <button class="btn btn--watched <%= userStatus === 'watched' ? 'active' : '' %>" data-status="watched">
-        ✓ Watched
+        ✓ <%= ui.watched %>
       </button>
     </div>
   </div>

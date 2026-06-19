@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<%= typeof user !== 'undefined' && user.langPref === 'ru' ? 'ru' : 'en' %>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -23,7 +23,7 @@
         <button data-lang="jp" class="<%= user.langPref === 'jp' ? 'active' : '' %>">JP</button>
         <button data-lang="ru" class="<%= user.langPref === 'ru' ? 'active' : '' %>">RU</button>
       </div>
-      <label class="visually-hidden" for="language-select">Language</label>
+      <label class="visually-hidden" for="language-select"><%= user.langPref === 'ru' ? 'Язык' : 'Language' %></label>
       <select class="nav-select language-select" id="language-select">
         <option value="en" <%= user.langPref === 'en' ? 'selected' : '' %>>EN</option>
         <option value="jp" <%= user.langPref === 'jp' ? 'selected' : '' %>>JP</option>
@@ -33,7 +33,7 @@
         <summary class="nav__user"><%= user.username %></summary>
         <div class="account-menu__panel">
           <form method="POST" action="/logout" class="logout-form">
-            <button type="submit" class="logout-btn">Logout</button>
+            <button type="submit" class="logout-btn"><%= user.langPref === 'ru' ? 'Выйти' : 'Logout' %></button>
           </form>
         </div>
       </details>

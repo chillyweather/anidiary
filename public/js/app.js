@@ -14,6 +14,71 @@ function getCurrentLang() {
   return active ? active.dataset.lang : 'en';
 }
 
+function uiText(english, russian) {
+  return getCurrentLang() === 'ru' ? russian : english;
+}
+
+function formatSeasonLabel(seasonValue) {
+  if (!seasonValue) return '';
+
+  const [season, year] = String(seasonValue).split('_');
+  if (!season || !year) return String(seasonValue);
+
+  const names = getCurrentLang() === 'ru'
+    ? { winter: 'Зима', spring: 'Весна', summer: 'Лето', fall: 'Осень' }
+    : { winter: 'Winter', spring: 'Spring', summer: 'Summer', fall: 'Fall' };
+
+  return `${names[season] || season} ${year}`;
+}
+
+function translateAiringStatus(status) {
+  if (getCurrentLang() !== 'ru') return status || '';
+
+  const statuses = {
+    'Finished Airing': 'Завершено',
+    'Currently Airing': 'Выходит',
+    'Not yet aired': 'Ещё не вышло',
+    'Cancelled': 'Отменено'
+  };
+
+  return statuses[status] || status || '';
+}
+
+function translateRelation(relation) {
+  if (getCurrentLang() !== 'ru') return relation || '';
+
+  const relations = {
+    'adaptation': 'Адаптация',
+    'alternative setting': 'Альтернативный мир',
+    'alternative version': 'Альтернативная версия',
+    'character': 'Персонаж',
+    'full story': 'Полная история',
+    'other': 'Другое',
+    'parent story': 'Основная история',
+    'prequel': 'Приквел',
+    'sequel': 'Сиквел',
+    'side story': 'Побочная история',
+    'spin-off': 'Спин-офф',
+    'summary': 'Краткое содержание'
+  };
+
+  return relations[String(relation || '').toLowerCase()] || relation || '';
+}
+
+function formatEpisodeCount(count) {
+  if (getCurrentLang() !== 'ru') return `${count} eps`;
+
+  const numericCount = Number(count);
+  const mod10 = numericCount % 10;
+  const mod100 = numericCount % 100;
+  let noun = 'серий';
+
+  if (mod10 === 1 && mod100 !== 11) noun = 'серия';
+  else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) noun = 'серии';
+
+  return `${count} ${noun}`;
+}
+
 function getAnimeDisplayTitle(data) {
   const currentLang = getCurrentLang();
 
@@ -51,7 +116,7 @@ function updateCountdowns() {
     const diff = target - Date.now();
 
     if (diff <= 0) {
-      el.textContent = 'Released';
+      el.textContent = uiText('Released', 'Вышло');
       return;
     }
 
@@ -60,11 +125,11 @@ function updateCountdowns() {
     const mins = Math.floor((diff % 3600000) / 60000);
 
     if (days > 0) {
-      el.textContent = `in ${days}d ${hrs}h`;
+      el.textContent = uiText(`in ${days}d ${hrs}h`, `через ${days} д. ${hrs} ч.`);
     } else if (hrs > 0) {
-      el.textContent = `in ${hrs}h ${mins}m`;
+      el.textContent = uiText(`in ${hrs}h ${mins}m`, `через ${hrs} ч. ${mins} мин.`);
     } else {
-      el.textContent = `in ${mins}m`;
+      el.textContent = uiText(`in ${mins}m`, `через ${mins} мин.`);
     }
   });
 }
@@ -163,7 +228,7 @@ function renderSeriesButton(button, target, label) {
   button.hidden = false;
   button.dataset.malId = String(target.mal_id);
   titleEl.textContent = getAnimeDisplayTitle(target);
-  metaEl.textContent = target.season_label || '';
+  metaEl.textContent = formatSeasonLabel(target.season) || target.season_label || '';
 }
 
 function renderSeriesNavigation(seriesNav) {
@@ -171,8 +236,8 @@ function renderSeriesNavigation(seriesNav) {
   const prevBtn = document.getElementById('modalPrevSeries');
   const nextBtn = document.getElementById('modalNextSeries');
 
-  renderSeriesButton(prevBtn, seriesNav?.previous || null, '← Previous');
-  renderSeriesButton(nextBtn, seriesNav?.next || null, 'Next →');
+  renderSeriesButton(prevBtn, seriesNav?.previous || null, uiText('← Previous', '← Предыдущее'));
+  renderSeriesButton(nextBtn, seriesNav?.next || null, uiText('Next →', 'Следующее →'));
 
   container.hidden = prevBtn.hidden && nextBtn.hidden;
 }
@@ -256,37 +321,37 @@ function renderModalData(data, userStatus) {
 
   const now = Math.floor(Date.now() / 1000);
   if (data.next_ep_at && data.next_ep_at > now) {
-    countdown.innerHTML = `<span class="countdown-timer" data-timestamp="${data.next_ep_at}">loading…</span>`;
+    countdown.innerHTML = `<span class="countdown-timer" data-timestamp="${data.next_ep_at}">${uiText('loading…', 'загрузка…')}</span>`;
     countdown.className = 'card__countdown';
-    episodes.textContent = `Episode ${data.next_ep_num || '?'}/${data.episodes_total || '?'}`;
+    episodes.textContent = `${uiText('Episode', 'Серия')} ${data.next_ep_num || '?'}/${data.episodes_total || '?'}`;
     episodes.style.display = 'inline';
   } else {
     countdown.innerHTML = '';
     if (data.airing_status === 'Finished Airing') {
-      countdown.innerHTML = '<span class="card__countdown countdown--released"><span>Released</span></span>';
+      countdown.innerHTML = `<span class="card__countdown countdown--released"><span>${uiText('Released', 'Вышло')}</span></span>`;
     } else if (data.airing_status === 'Not yet aired') {
-      countdown.innerHTML = '<span class="card__countdown countdown--not-aired"><span>Not aired</span></span>';
+      countdown.innerHTML = `<span class="card__countdown countdown--not-aired"><span>${uiText('Not aired', 'Не вышло')}</span></span>`;
     } else {
-      countdown.innerHTML = '<span class="card__countdown countdown--tba"><span>TBA</span></span>';
+      countdown.innerHTML = `<span class="card__countdown countdown--tba"><span>${uiText('TBA', 'Неизвестно')}</span></span>`;
     }
-    episodes.textContent = `${data.episodes_total || '?'} eps`;
+    episodes.textContent = formatEpisodeCount(data.episodes_total || '?');
     episodes.style.display = 'inline';
   }
-  statusBadge.textContent = data.airing_status || '';
+  statusBadge.textContent = translateAiringStatus(data.airing_status);
   statusBadge.style.display = data.airing_status ? 'inline' : 'none';
 
   related.innerHTML = '';
   if (data.related && data.related.length > 0) {
     const sectionTitle = document.createElement('div');
     sectionTitle.className = 'modal__section-title';
-    sectionTitle.textContent = 'Related Series';
+    sectionTitle.textContent = uiText('Related Series', 'Связанные аниме');
     related.appendChild(sectionTitle);
     data.related.forEach(r => {
       r.entries && r.entries.forEach(e => {
         const item = document.createElement('div');
         item.className = 'modal__related-item';
         item.innerHTML = `
-          <span class="modal__related-type">${r.relation}</span>
+          <span class="modal__related-type">${translateRelation(r.relation)}</span>
           <span class="modal__related-title">${e.title}</span>
         `;
         related.appendChild(item);
@@ -532,7 +597,7 @@ function updateFollowingCount() {
   const tab = document.querySelector('.tab[data-tab="following"]');
   if (!tab) return;
   const count = document.querySelectorAll('.card[data-followed="true"]').length;
-  tab.textContent = `Following (${count})`;
+  tab.textContent = `${uiText('Following', 'Мои')} (${count})`;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
