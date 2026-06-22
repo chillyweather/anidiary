@@ -221,11 +221,29 @@ body {
   color: var(--text-secondary);
 }
 
-.btn--follow:hover,
-.btn--jellyfin:hover,
-.btn--watched:hover {
+.btn--follow:hover:not(.active),
+.btn--jellyfin:hover:not(.active),
+.btn--watched:hover:not(.active) {
   border-color: var(--border);
   background: var(--surface-alt);
+}
+
+.btn--follow.active:hover {
+  background: rgba(212, 132, 90, 0.18);
+  border-color: var(--follow);
+  color: var(--follow);
+}
+
+.btn--jellyfin.active:hover {
+  background: rgba(107, 163, 190, 0.18);
+  border-color: var(--jellyfin);
+  color: var(--jellyfin);
+}
+
+.btn--watched.active:hover {
+  background: rgba(124, 179, 130, 0.18);
+  border-color: var(--watched);
+  color: var(--watched);
 }
 
 /* Active states — filled with tint on button + card */
