@@ -9,6 +9,44 @@ function jsonHeaders() {
   return { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken };
 }
 
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || `Request failed (${response.status})`);
+  }
+
+  return data;
+}
+
+function showActionError(message) {
+  let error = document.getElementById('actionError');
+  if (!error) {
+    error = document.createElement('div');
+    error.id = 'actionError';
+    error.className = 'action-error';
+    error.setAttribute('role', 'alert');
+    document.body.appendChild(error);
+  }
+
+  error.textContent = message;
+  error.hidden = false;
+  clearTimeout(showActionError.timeoutId);
+  showActionError.timeoutId = setTimeout(() => {
+    error.hidden = true;
+  }, 5000);
+}
+
+function setButtonPending(button, pending) {
+  button.disabled = pending;
+  button.setAttribute('aria-busy', pending ? 'true' : 'false');
+}
+
 function getCurrentLang() {
   const active = document.querySelector('.lang-toggle button.active');
   return active ? active.dataset.lang : 'en';
@@ -122,12 +160,8 @@ function initStatusButtons() {
       const newStatus = isActive ? 'none' : status;
 
       try {
-        const res  = await fetch('/api/mark', {
-          method: 'POST',
-          headers: jsonHeaders(),
-          body: JSON.stringify({ mal_id: malId, status: newStatus })
-        });
-        const data = await res.json();
+        setButtonPending(btn, true);
+        const data = await postJson('/api/mark', { mal_id: malId, status: newStatus });
 
         if (data.ok) {
           btn.closest('.card__actions').querySelectorAll('button[data-status]').forEach(b => b.classList.remove('active'));
@@ -145,6 +179,9 @@ function initStatusButtons() {
         }
       } catch (err) {
         console.error('Failed to update status:', err);
+        showActionError(err.message);
+      } finally {
+        setButtonPending(btn, false);
       }
     });
   });
@@ -171,13 +208,14 @@ function initJellyfinButtons() {
       const malId = card ? Number(card.dataset.malId) : currentModalMalId;
       const available = !button.classList.contains('active');
       try {
-        const response = await fetch('/api/jellyfin', {
-          method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ mal_id: malId, available })
-        });
-        const result = await response.json();
+        setButtonPending(button, true);
+        const result = await postJson('/api/jellyfin', { mal_id: malId, available });
         if (result.ok) setJellyfinState(malId, result.available);
       } catch (error) {
         console.error('Failed to update Jellyfin availability:', error);
+        showActionError(error.message);
+      } finally {
+        setButtonPending(button, false);
       }
     });
   });
@@ -494,12 +532,8 @@ function initModal() {
       const newStatus = isActive ? 'none' : status;
 
       try {
-        const res  = await fetch('/api/mark', {
-          method: 'POST',
-          headers: jsonHeaders(),
-          body: JSON.stringify({ mal_id: malId, status: newStatus })
-        });
-        const data = await res.json();
+        setButtonPending(btn, true);
+        const data = await postJson('/api/mark', { mal_id: malId, status: newStatus });
         if (data.ok) {
           const card = document.querySelector(`.card[data-mal-id="${malId}"]`);
           if (card) {
@@ -521,6 +555,9 @@ function initModal() {
         }
       } catch (err) {
         console.error('Failed to update status:', err);
+        showActionError(err.message);
+      } finally {
+        setButtonPending(btn, false);
       }
     });
   });

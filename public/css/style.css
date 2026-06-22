@@ -212,6 +212,31 @@ body {
   font-size: 0.9375rem;
 }
 
+.btn[aria-busy="true"] {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.action-error {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 300;
+  max-width: min(360px, calc(100vw - 36px));
+  padding: 12px 14px;
+  border: 1px solid rgba(164, 56, 56, 0.35);
+  border-radius: var(--radius-sm);
+  background: #fff5f5;
+  color: #8f2f2f;
+  box-shadow: var(--shadow-md);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.action-error[hidden] {
+  display: none;
+}
+
 /* Status buttons — pill style */
 .btn--follow,
 .btn--jellyfin,
