@@ -43,6 +43,7 @@ router.get('/season/:year/:season', requireLogin, (req, res) => {
     season,
     adjacentSeasons,
     ui,
+    csrfToken: res.locals.csrfToken,
     localeJson: JSON.stringify(ui).replace(/</g, '\\u003c'),
     user: req.session
   });

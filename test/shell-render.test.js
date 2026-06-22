@@ -32,6 +32,8 @@ test('shared authenticated shell preserves navigation controls in every interfac
     assert.match(html, /class="nav-select language-select"/);
     assert.match(html, /class="account-menu"/);
     assert.match(html, /action="\/logout"/);
+    assert.match(html, /<meta name="csrf-token" content="test-token">/);
+    assert.match(html, /<input type="hidden" name="_csrf" value="test-token">/);
     assert.match(html, /role="dialog" aria-modal="true" aria-labelledby="modalTitle"/);
   }
   assert.match(await renderSeason('ru'), />Язык</);
