@@ -50,8 +50,14 @@ const migrations = [
   }
 ];
 
+const LATEST_SCHEMA_VERSION = migrations.reduce((max, migration) => Math.max(max, migration.version), 0);
+
 function migrate(db, orderedMigrations = migrations) {
   let currentVersion = db.pragma('user_version', { simple: true });
+  const latestKnown = orderedMigrations.reduce((max, migration) => Math.max(max, migration.version), 0);
+  if (currentVersion > latestKnown) {
+    throw new Error(`Database schema v${currentVersion} is newer than this code (knows up to v${latestKnown}). Refusing to start against a database migrated by a later release.`);
+  }
   for (const migration of orderedMigrations) {
     if (migration.version <= currentVersion) continue;
     if (migration.version !== currentVersion + 1) {
@@ -67,4 +73,4 @@ function migrate(db, orderedMigrations = migrations) {
   return currentVersion;
 }
 
-module.exports = { migrations, migrate };
+module.exports = { migrations, migrate, LATEST_SCHEMA_VERSION };

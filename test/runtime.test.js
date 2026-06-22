@@ -50,6 +50,12 @@ test('application serves an authenticated session from an isolated database', as
 
   const address = server.address();
   const baseUrl = `http://127.0.0.1:${address.port}`;
+  const health = await fetch(`${baseUrl}/healthz`);
+  assert.equal(health.status, 200);
+  assert.deepEqual(await health.json(), {
+    ok: true, schemaVersion: 2, expectedSchemaVersion: 2, writable: true
+  });
+
   const unauthenticatedDetail = await fetch(`${baseUrl}/api/anime/1`);
   assert.equal(unauthenticatedDetail.status, 401);
   assert.deepEqual(await unauthenticatedDetail.json(), { error: 'Not authenticated' });

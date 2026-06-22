@@ -41,10 +41,12 @@ export DB_PATH
 pm2 startOrReload "$RELEASE_DIR/ecosystem.config.js" --env production --update-env
 pm2 save
 
-SMOKE_URL="http://127.0.0.1:${PORT:-3000}/login"
+# /healthz returns {"ok":true} only when the running code can write the database
+# and its schema version matches the code, so a stale or read-only deploy fails here.
+SMOKE_URL="http://127.0.0.1:${PORT:-3000}/healthz"
 SMOKE_OK=false
 for attempt in $(seq 1 30); do
-  if curl -fsS --max-time 5 "$SMOKE_URL" >/dev/null 2>&1; then
+  if curl -fsS --max-time 5 "$SMOKE_URL" 2>/dev/null | grep -q '"ok":true'; then
     SMOKE_OK=true
     echo "Smoke check passed on attempt $attempt"
     break

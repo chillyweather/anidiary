@@ -43,6 +43,25 @@ function createApp({
   app.use(express.json({ limit: '100kb' }));
   app.use(express.urlencoded({ extended: false, limit: '50kb' }));
 
+  // Deploy smoke check: verifies the running code can actually write the
+  // database and that its schema version matches what this code expects.
+  // A stale process against a newer-migrated database fails here.
+  app.get('/healthz', (req, res) => {
+    try {
+      const health = repository.checkHealth();
+      const healthy = health.writable && health.schemaVersion === health.expectedSchemaVersion;
+      return res.status(healthy ? 200 : 503).json({
+        ok: healthy,
+        schemaVersion: health.schemaVersion,
+        expectedSchemaVersion: health.expectedSchemaVersion,
+        writable: health.writable
+      });
+    } catch (err) {
+      console.error('Health check failed:', err);
+      return res.status(503).json({ ok: false });
+    }
+  });
+
   const publicDir = path.join(__dirname, '../public');
   const noCache = (res) => res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   app.use('/css', express.static(path.join(publicDir, 'css'), { setHeaders: noCache }));

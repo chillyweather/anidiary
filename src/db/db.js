@@ -4,12 +4,33 @@ const { migrations: defaultMigrations, migrate } = require('./migrations');
 
 const DEFAULT_DB_PATH = path.join(__dirname, '../../anidiary.db');
 
+const HEALTH_ROLLBACK = new Error('healthz write probe rollback');
+
 function createDatabase(dbPath, { migrations = defaultMigrations } = {}) {
   if (!dbPath) throw new Error('A database path is required');
 
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+
+  const expectedSchemaVersion = migrations.reduce((max, migration) => Math.max(max, migration.version), 0);
+
+  function checkHealth() {
+    const schemaVersion = db.pragma('user_version', { simple: true });
+    let writable = false;
+    try {
+      db.transaction(() => {
+        db.prepare('CREATE TABLE IF NOT EXISTS _healthz_probe (touched_at INTEGER)').run();
+        db.prepare('INSERT INTO _healthz_probe (touched_at) VALUES (unixepoch())').run();
+        throw HEALTH_ROLLBACK;
+      })();
+    } catch (err) {
+      // The probe intentionally rolls back; any other error means the database
+      // could not be written (read-only file/directory, lock, corruption).
+      writable = err === HEALTH_ROLLBACK;
+    }
+    return { schemaVersion, expectedSchemaVersion, writable };
+  }
 
   function init() {
     const startingVersion = db.pragma('user_version', { simple: true });
@@ -59,6 +80,7 @@ function createDatabase(dbPath, { migrations = defaultMigrations } = {}) {
     db,
     path: dbPath,
     init,
+    checkHealth,
     close: () => db.close(),
     transaction: (operation) => db.transaction(operation)(),
     getAnimeBySeason,

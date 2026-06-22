@@ -81,6 +81,29 @@ test('failed migration does not advance its schema version', (t) => {
   repository.close();
 });
 
+test('refuses to start when the database schema is newer than the code knows', (t) => {
+  const dbPath = temporaryPath(t);
+  const ahead = createDatabase(dbPath);
+  ahead.init();
+  ahead.db.pragma('user_version = 99');
+  ahead.close();
+
+  const repository = createDatabase(dbPath);
+  assert.throws(() => repository.init(), /newer than this code/);
+  assert.equal(repository.db.pragma('user_version', { simple: true }), 99);
+  repository.close();
+});
+
+test('checkHealth reports schema version and database writability', (t) => {
+  const repository = createDatabase(temporaryPath(t));
+  repository.init();
+  assert.deepEqual(repository.checkHealth(), {
+    schemaVersion: 2, expectedSchemaVersion: 2, writable: true
+  });
+  assert.equal(repository.db.prepare("SELECT name FROM sqlite_master WHERE name = '_healthz_probe'").get(), undefined);
+  repository.close();
+});
+
 test('personal status conflict updates preserve independent Jellyfin availability', (t) => {
   const repository = createDatabase(temporaryPath(t));
   repository.init();
