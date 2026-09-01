@@ -48,8 +48,10 @@ esac
 `);
   executable(path.join(binDirectory, 'pm2'), `#!/usr/bin/env bash
 set -e
-if [ "$1" = startOrReload ]; then
+if [ "$1" = start ]; then
   printf '%s:%s\n' "$2" "$(cat "$DB_PATH")" >> "$EVENT_LOG"
+elif [ "$1" = delete ]; then
+  printf 'delete:%s\n' "$2" >> "$EVENT_LOG"
 fi
 `);
 
@@ -69,7 +71,8 @@ fi
 
   assert.equal(result.status, 1, result.stderr);
   assert.equal(fs.readFileSync(databasePath, 'utf8'), 'original');
-  assert.deepEqual(fs.readFileSync(eventLog, 'utf8').trim().split('\n'), [
+  const events = fs.readFileSync(eventLog, 'utf8').trim().split('\n').filter((line) => line.includes('ecosystem.config.js'));
+  assert.deepEqual(events, [
     `${path.join(releaseDirectory, 'ecosystem.config.js')}:migrated`,
     `${path.join(previousDirectory, 'ecosystem.config.js')}:original`
   ]);

@@ -43,8 +43,9 @@ test('deployment pins SSH trust and prepares recovery before restart', () => {
   const install = release.indexOf('npm ci --omit=dev');
   const backup = release.indexOf('sqlite3 "$DB_PATH" ".backup');
   const migrate = release.indexOf('node scripts/migrate.js');
-  const restart = release.indexOf('pm2 startOrReload');
-  assert.ok(install >= 0 && install < backup && backup < migrate && migrate < restart);
+  const restart = release.indexOf('pm2 start "');
+  const deleteStep = release.indexOf('pm2 delete anidiary');
+  assert.ok(install >= 0 && install < backup && backup < migrate && migrate < restart && migrate < deleteStep && deleteStep < restart);
   assert.match(release, /PRAGMA integrity_check/);
   assert.match(release, /\.previous-release/);
   assert.match(release, /curl -fsS/);

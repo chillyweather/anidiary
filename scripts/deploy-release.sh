@@ -38,7 +38,8 @@ command -v pm2 >/dev/null
 
 PREVIOUS_RELEASE=$(cat "$APP_DIR/.current-release" 2>/dev/null || printf '%s' "$APP_DIR")
 export DB_PATH
-pm2 startOrReload "$RELEASE_DIR/ecosystem.config.js" --env production --update-env
+pm2 delete anidiary || true
+pm2 start "$RELEASE_DIR/ecosystem.config.js" --env production --update-env
 pm2 save
 
 # /healthz returns {"ok":true} only when the running code can write the database
@@ -66,7 +67,8 @@ if [ "$SMOKE_OK" != true ]; then
     echo "Restored database backup: $BACKUP_PATH"
   fi
   if [ -f "$PREVIOUS_RELEASE/ecosystem.config.js" ]; then
-    pm2 startOrReload "$PREVIOUS_RELEASE/ecosystem.config.js" --env production --update-env || true
+    pm2 delete anidiary || true
+    pm2 start "$PREVIOUS_RELEASE/ecosystem.config.js" --env production --update-env || true
   fi
   exit 1
 fi
