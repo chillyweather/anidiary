@@ -7,6 +7,7 @@ const path = require('node:path');
 const { createDatabase } = require('../src/db/db');
 const { createSyncService } = require('../src/services/sync');
 const { fetchSeasonWith } = require('../src/services/jikan');
+const { cleanDescription } = require('../src/services/anilist');
 
 function createRepository(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'anidiary-sync-'));
@@ -253,4 +254,65 @@ test('concurrent synchronization for one season is skipped and later runs can pr
   assert.equal((await first).transaction, 'committed');
   assert.equal((await sync.syncSeason(2026, 'spring')).skipped, undefined);
   assert.equal(calls, 2);
+});
+
+test('AniList supplies the season list and English text when Jikan is unavailable', async (t) => {
+  const repository = createRepository(t);
+  repository.upsertAnime(anime({ mal_id: 2, season: 'summer_2026', synopsis_en: null, score_mal: 8 }));
+  const anilistRecords = new Map([
+    [2, { title_en: 'Carried over', synopsis_en: 'From AniList', anilist_id: 20, genres: ['Drama'] }],
+    [3, { title_en: 'Brand new', title_jp: '新しい', synopsis_en: 'New synopsis', anilist_id: 30, genres: ['Comedy'], poster_url: 'https://example.test/new.jpg' }]
+  ]);
+  const sync = createSyncService({
+    repository,
+    providers: {
+      jikan: { fetchSeason: async () => ({ records: [], complete: false, errors: [{ page: 1, message: 'Jikan API error: 504' }] }) },
+      anilist: { fetchSeason: async () => completeMap(anilistRecords) },
+      shikimori: { fetchBatch: async () => completeMap() }
+    },
+    logger: { log() {}, error() {} }
+  });
+
+  const result = await sync.syncSeason(2026, 'fall');
+  assert.equal(result.writes, 2);
+  assert.equal(result.anilistOnly, 2);
+  assert.equal(result.complete, false);
+
+  const created = repository.getAnimeByMalId(3);
+  assert.equal(created.title_en, 'Brand new');
+  assert.equal(created.synopsis_en, 'New synopsis');
+  assert.equal(created.season, 'fall_2026');
+  assert.equal(created.genres, '["Comedy"]');
+  assert.equal(created.score_mal, null);
+
+  const existing = repository.getAnimeByMalId(2);
+  assert.equal(existing.synopsis_en, 'From AniList');
+  assert.equal(existing.season, 'summer_2026');
+  assert.equal(existing.score_mal, 8);
+});
+
+test('a complete Jikan result is not extended with AniList-only anime', async (t) => {
+  const repository = createRepository(t);
+  const sync = createSyncService({
+    repository,
+    providers: {
+      jikan: { fetchSeason: async () => ({ records: [anime({ synopsis_en: null })], complete: true, errors: [] }) },
+      anilist: { fetchSeason: async () => completeMap(new Map([
+        [1, { synopsis_en: 'AniList synopsis' }], [9, { title_en: 'AniList only' }]
+      ])) },
+      shikimori: { fetchBatch: async () => completeMap() }
+    },
+    logger: { log() {}, error() {} }
+  });
+
+  const result = await sync.syncSeason(2026, 'spring');
+  assert.equal(result.anilistOnly, 0);
+  assert.equal(repository.getAnimeByMalId(9), undefined);
+  assert.equal(repository.getAnimeByMalId(1).synopsis_en, 'AniList synopsis');
+});
+
+test('AniList descriptions are reduced to plain text', () => {
+  assert.equal(cleanDescription('First line.<br><br>\n<i>Second</i> &amp; third.<br /><br><br><br>(Source: X)'), 'First line.\n\nSecond & third.\n\n(Source: X)');
+  assert.equal(cleanDescription('<br>'), null);
+  assert.equal(cleanDescription(null), null);
 });

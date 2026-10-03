@@ -1,7 +1,7 @@
 const jikan = require('./jikan');
 const anilist = require('./anilist');
 const shikimori = require('./shikimori');
-const { getCurrentSeason } = require('../domain/seasons');
+const { getCurrentSeason, seasonKey } = require('../domain/seasons');
 
 function createSyncService({ repository, providers = {}, logger = console }) {
   const jikanClient = providers.jikan || jikan;
@@ -44,12 +44,23 @@ function createSyncService({ repository, providers = {}, logger = console }) {
       providerResult('jikan', () => jikanClient.fetchSeason(year, normalizedSeason), []),
       providerResult('anilist', () => anilistClient.fetchSeason(normalizedSeason, year), new Map())
     ]);
-    const records = Array.isArray(jikanResult.records) ? jikanResult.records : [];
+    const anilistRecords = anilistResult.records instanceof Map ? anilistResult.records : new Map();
+    const records = Array.isArray(jikanResult.records) ? [...jikanResult.records] : [];
+    // When Jikan is unavailable or cut short, AniList supplies the anime it missed
+    // so a new season is still listed; Jikan-owned fields fill in on a later sync.
+    let anilistOnly = 0;
+    if (!jikanResult.complete) {
+      const jikanIds = new Set(records.map((anime) => anime.mal_id));
+      for (const malId of anilistRecords.keys()) {
+        if (jikanIds.has(malId)) continue;
+        records.push({ mal_id: malId });
+        anilistOnly++;
+      }
+    }
     const malIds = [...new Set(records.map((anime) => anime.mal_id))];
     const shikimoriResult = await providerResult(
       'shikimori', () => shikimoriClient.fetchBatch(malIds), new Map()
     );
-    const anilistRecords = anilistResult.records instanceof Map ? anilistResult.records : new Map();
     const shikimoriRecords = shikimoriResult.records instanceof Map ? shikimoriResult.records : new Map();
 
     let preservedFields = 0;
@@ -72,14 +83,14 @@ function createSyncService({ repository, providers = {}, logger = console }) {
         title_en: valueOrExisting([anime.title_en, alData.title_en], existing.title_en),
         title_jp: valueOrExisting([alData.title_jp, anime.title_jp], existing.title_jp),
         title_ru: valueOrExisting([shData.title_ru], existing.title_ru),
-        synopsis_en: valueOrExisting([anime.synopsis_en], existing.synopsis_en),
+        synopsis_en: valueOrExisting([anime.synopsis_en, alData.synopsis_en], existing.synopsis_en),
         synopsis_ru: valueOrExisting([shData.synopsis_ru], existing.synopsis_ru),
         poster_url: valueOrExisting([anime.poster_url, alData.poster_url], existing.poster_url),
         score_mal: valueOrExisting([anime.score_mal], existing.score_mal),
         score_anilist: valueOrExisting([alData.score_anilist], existing.score_anilist),
         score_shiki: valueOrExisting([shData.score_shiki], existing.score_shiki),
         episodes_total: valueOrExisting([anime.episodes_total, alData.episodes_total], existing.episodes_total),
-        season: valueOrExisting([anime.season], existing.season),
+        season: valueOrExisting([anime.season], existing.season) || seasonKey(year, normalizedSeason),
         airing_status: valueOrExisting([alData.airing_status, anime.airing_status], existing.airing_status),
         airing_day: valueOrExisting([anime.airing_day], existing.airing_day),
         next_ep_num: valueOrExisting([alData.next_ep_num], existing.next_ep_num),
@@ -102,6 +113,7 @@ function createSyncService({ repository, providers = {}, logger = console }) {
       year,
       providers: providerSummary,
       records: records.length,
+      anilistOnly,
       writes: 0,
       writeErrors: 0,
       preservedFields,

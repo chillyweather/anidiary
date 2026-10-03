@@ -1,15 +1,17 @@
 const ANILIST_URL = 'https://graphql.anilist.co';
 const REQUEST_TIMEOUT_MS = 15000;
+const he = require('he');
 const { toAniListSeason } = require('../domain/seasons');
 
 const SEASON_QUERY = `
   query ($season: MediaSeason, $year: Int, $page: Int) {
     Page(page: $page, perPage: 50) {
       pageInfo { hasNextPage currentPage }
-      media(season: $season, seasonYear: $year, type: ANIME, sort: POPULARITY_DESC) {
+      media(season: $season, seasonYear: $year, type: ANIME, isAdult: false, sort: POPULARITY_DESC) {
         id
         idMal
         title { romaji english native }
+        description(asHtml: false)
         nextAiringEpisode { airingAt episode }
         episodes
         averageScore
@@ -20,6 +22,15 @@ const SEASON_QUERY = `
     }
   }
 `;
+
+// AniList descriptions carry inline markup (<br>, <i>) and HTML entities.
+function cleanDescription(description) {
+  if (!description) return null;
+  const text = he.decode(String(description).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ''))
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return text || null;
+}
 
 async function fetchSeason(season, year) {
   const dataMap = new Map();
@@ -84,7 +95,9 @@ async function fetchSeason(season, year) {
           score_anilist: media.averageScore,
           next_ep_num: media.nextAiringEpisode?.episode || null,
           next_ep_at: media.nextAiringEpisode?.airingAt || null,
+          title_en: media.title?.english || media.title?.romaji || null,
           title_jp: media.title?.native || null,
+          synopsis_en: cleanDescription(media.description),
           poster_url: media.coverImage?.large || null,
           anilist_id: media.id,
           genres: media.genres || [],
@@ -106,4 +119,4 @@ async function fetchSeason(season, year) {
   return { records: dataMap, complete: errors.length === 0, errors };
 }
 
-module.exports = { fetchSeason };
+module.exports = { fetchSeason, cleanDescription };
