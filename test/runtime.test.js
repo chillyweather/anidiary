@@ -53,7 +53,7 @@ test('application serves an authenticated session from an isolated database', as
   const health = await fetch(`${baseUrl}/healthz`);
   assert.equal(health.status, 200);
   assert.deepEqual(await health.json(), {
-    ok: true, schemaVersion: 2, expectedSchemaVersion: 2, writable: true
+    ok: true, schemaVersion: 3, expectedSchemaVersion: 3, writable: true
   });
 
   const unauthenticatedDetail = await fetch(`${baseUrl}/api/anime/1`);

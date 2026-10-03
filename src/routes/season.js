@@ -5,7 +5,7 @@ const { getCatalog } = require('../locales');
 
 function createSeasonRouter(repository) {
 const router = express.Router();
-const { getAnimeBySeason, getUserAnimeStatus, getFollowedAnimeForUser } = repository;
+const { getAnimeBySeason, getUserAnimeStatus, getTabAnimeForUser } = repository;
 
 router.get('/', (req, res) => {
   const { year, season } = getCurrentSeason();
@@ -24,7 +24,7 @@ router.get('/season/:year/:season', requireLogin, (req, res) => {
   
   const animeList = getAnimeBySeason(seasonParam);
   const userStatuses = getUserAnimeStatus(req.session.userId);
-  const followedAnime = getFollowedAnimeForUser(req.session.userId);
+  const tabAnime = getTabAnimeForUser(req.session.userId);
   
   const statusMap = new Map();
   for (const row of userStatuses) {
@@ -32,12 +32,12 @@ router.get('/season/:year/:season', requireLogin, (req, res) => {
   }
   
   const adjacentSeasons = getAdjacentSeasons(year, season);
-  const followedAnimeOutsideSeason = followedAnime.filter((anime) => anime.season !== seasonParam);
+  const trackedAnimeOutsideSeason = tabAnime.filter((anime) => anime.season !== seasonParam);
   const ui = getCatalog(req.session.langPref);
   
   res.render('season', {
     animeList,
-    followedAnimeOutsideSeason,
+    trackedAnimeOutsideSeason,
     userStatuses: statusMap,
     year,
     season,

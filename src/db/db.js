@@ -89,9 +89,9 @@ function createDatabase(dbPath, { migrations = defaultMigrations } = {}) {
     upsertAnime,
     getUserAnimeStatus: (userId) => db.prepare('SELECT mal_id, status FROM user_anime WHERE user_id = ?').all(userId),
     getUserAnimeStatusByMalId: (userId, malId) => db.prepare('SELECT status FROM user_anime WHERE user_id = ? AND mal_id = ?').get(userId, malId),
-    getFollowedAnimeForUser: (userId) => db.prepare(`
+    getTabAnimeForUser: (userId) => db.prepare(`
       SELECT a.* FROM user_anime ua JOIN anime a ON a.mal_id = ua.mal_id
-      WHERE ua.user_id = ? ORDER BY ua.updated_at DESC
+      WHERE ua.user_id = ? AND ua.status IN ('following', 'watching') ORDER BY ua.updated_at DESC
     `).all(userId),
     setUserAnimeStatus: (userId, malId, status) => db.prepare(`
       INSERT INTO user_anime (user_id, mal_id, status, updated_at)

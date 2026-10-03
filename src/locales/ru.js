@@ -5,7 +5,7 @@ module.exports = Object.freeze({
   following: 'Мои', sortBy: 'Сортировка:', malScore: 'Оценка MAL',
   anilistScore: 'Оценка AniList', shikimoriScore: 'Оценка Shikimori',
   nextEpisode: 'Следующая серия', title: 'Название', close: 'Закрыть',
-  follow: 'Отслеживать', jellyfin: 'Jellyfin', watched: 'Просмотрено',
+  follow: 'Отслеживать', jellyfin: 'Jellyfin', watching: 'Смотрю', watched: 'Просмотрено',
   released: 'Вышло', notAired: 'Не вышло', tba: 'Неизвестно',
   episodeShort: 'сер.', episode: 'Серия',
   episodeForms: ['серия', 'серии', 'серий'], showMore: 'Подробнее', loading: 'Загрузка деталей...',

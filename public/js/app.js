@@ -137,10 +137,11 @@ function updateCountdowns() {
 }
 
 function setCardStatusClass(card, status) {
-  card.classList.remove('card--following', 'card--watched');
+  card.classList.remove('card--following', 'card--watching', 'card--watched');
 
   const statusClassMap = {
     following: 'card--following',
+    watching: 'card--watching',
     watched: 'card--watched'
   };
 
@@ -169,9 +170,8 @@ function initStatusButtons() {
             btn.classList.add('active');
           }
           setCardStatusClass(card, newStatus);
-          card.dataset.followed   = newStatus !== 'none' ? 'true' : 'false';
           card.dataset.status     = newStatus !== 'none' ? newStatus : '';
-          updateFollowingCount();
+          updateTabCounts();
           if (typeof window.applyTabFilter === 'function') {
             window.applyTabFilter();
           }
@@ -544,9 +544,8 @@ function initModal() {
               if (cardButton) cardButton.classList.add('active');
             }
             setCardStatusClass(card, newStatus);
-            card.dataset.followed = newStatus !== 'none' ? 'true' : 'false';
             card.dataset.status   = newStatus !== 'none' ? newStatus : '';
-            updateFollowingCount();
+            updateTabCounts();
             if (typeof window.applyTabFilter === 'function') {
               window.applyTabFilter();
             }
@@ -570,13 +569,12 @@ function initTabs() {
 
     const tabType = activeTab.dataset.tab;
     document.querySelectorAll('.card').forEach(card => {
-      const isFollowed = card.dataset.followed === 'true';
       const isCurrentSeason = card.dataset.inCurrentSeason !== 'false';
 
       if (tabType === 'all') {
         card.classList.toggle('card--hidden', !isCurrentSeason);
       } else {
-        card.classList.toggle('card--hidden', !isFollowed);
+        card.classList.toggle('card--hidden', card.dataset.status !== tabType);
       }
     });
   };
@@ -657,11 +655,13 @@ function initSeasonSelect() {
   });
 }
 
-function updateFollowingCount() {
-  const tab = document.querySelector('.tab[data-tab="following"]');
-  if (!tab) return;
-  const count = document.querySelectorAll('.card[data-followed="true"]').length;
-  tab.textContent = `${uiText('following')} (${count})`;
+function updateTabCounts() {
+  ['following', 'watching'].forEach(status => {
+    const tab = document.querySelector(`.tab[data-tab="${status}"]`);
+    if (!tab) return;
+    const count = document.querySelectorAll(`.card[data-status="${status}"]`).length;
+    tab.textContent = `${uiText(status)} (${count})`;
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {

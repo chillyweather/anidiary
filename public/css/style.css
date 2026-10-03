@@ -15,6 +15,8 @@
 
   --follow:        #D4845A;
   --follow-light:  rgba(212, 132, 90, 0.12);
+  --watching:      #9B8AC4;
+  --watching-light:rgba(155, 138, 196, 0.12);
   --jellyfin:      #6BA3BE;
   --jellyfin-light:rgba(107, 163, 190, 0.12);
   --watched:       #7CB382;
@@ -239,6 +241,7 @@ body {
 
 /* Status buttons — pill style */
 .btn--follow,
+.btn--watching,
 .btn--jellyfin,
 .btn--watched {
   border-color: var(--border);
@@ -247,6 +250,7 @@ body {
 }
 
 .btn--follow:hover:not(.active),
+.btn--watching:hover:not(.active),
 .btn--jellyfin:hover:not(.active),
 .btn--watched:hover:not(.active) {
   border-color: var(--border);
@@ -257,6 +261,12 @@ body {
   background: rgba(212, 132, 90, 0.18);
   border-color: var(--follow);
   color: var(--follow);
+}
+
+.btn--watching.active:hover {
+  background: rgba(155, 138, 196, 0.18);
+  border-color: var(--watching);
+  color: var(--watching);
 }
 
 .btn--jellyfin.active:hover {
@@ -276,6 +286,12 @@ body {
   background: var(--follow-light);
   border-color: var(--follow);
   color: var(--follow);
+}
+
+.btn--watching.active {
+  background: var(--watching-light);
+  border-color: var(--watching);
+  color: var(--watching);
 }
 
 .btn--jellyfin.active {
@@ -587,7 +603,13 @@ body {
   opacity: 0.3;
 }
 
-/* Multiple statuses: prioritize watched > jellyfin > follow */
+.card--watching,
+.card--watching.card--jellyfin {
+  background: var(--watching-light);
+  border-color: rgba(155, 138, 196, 0.35);
+}
+
+/* Multiple statuses: prioritize watched > watching > jellyfin > follow */
 .card--following.card--jellyfin {
   background: var(--jellyfin-light);
   border-color: rgba(107, 163, 190, 0.35);

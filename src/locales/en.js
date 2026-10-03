@@ -5,7 +5,7 @@ module.exports = Object.freeze({
   following: 'Following', sortBy: 'Sort by:', malScore: 'MAL Score',
   anilistScore: 'AniList Score', shikimoriScore: 'Shikimori Score',
   nextEpisode: 'Next Episode', title: 'Title', close: 'Close', follow: 'Follow',
-  jellyfin: 'Jellyfin', watched: 'Watched', released: 'Released',
+  jellyfin: 'Jellyfin', watching: 'Watching', watched: 'Watched', released: 'Released',
   notAired: 'Not aired', tba: 'TBA', episodeShort: 'ep', episode: 'Episode',
   episodeForms: ['episode', 'episodes'], showMore: 'Show more', loading: 'Loading details...',
   noDetails: 'No additional details are available.', loadDetailsFailed: 'Unable to load details. Please try again.',

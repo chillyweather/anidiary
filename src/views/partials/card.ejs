@@ -24,6 +24,7 @@
 
   const cardStatusClasses = [];
   if (userStatus === 'following') cardStatusClasses.push('card--following');
+  if (userStatus === 'watching') cardStatusClasses.push('card--watching');
   if (anime.in_jellyfin) cardStatusClasses.push('card--jellyfin');
   if (userStatus === 'watched') cardStatusClasses.push('card--watched');
   const cardClass = cardStatusClasses.length > 0 ? cardStatusClasses.join(' ') : '';
@@ -46,7 +47,6 @@
 <div
   class="card <%= cardClass %> <%= initiallyHiddenCard ? 'card--hidden' : '' %>"
   data-mal-id="<%= anime.mal_id %>"
-  data-followed="<%= userStatus ? 'true' : 'false' %>"
   data-in-current-season="<%= currentSeasonCard ? 'true' : 'false' %>"
   data-score-mal="<%= anime.score_mal || 0 %>"
   data-score-anilist="<%= anime.score_anilist || 0 %>"
@@ -89,6 +89,9 @@
     <div class="card__actions">
       <button class="btn btn--follow <%= userStatus === 'following' ? 'active' : '' %>" data-status="following">
         ♡ <%= ui.follow %>
+      </button>
+      <button class="btn btn--watching <%= userStatus === 'watching' ? 'active' : '' %>" data-status="watching">
+        ▶ <%= ui.watching %>
       </button>
       <button class="btn btn--jellyfin <%= anime.in_jellyfin ? 'active' : '' %>" data-jellyfin="true">
         📦 <%= ui.jellyfin %>

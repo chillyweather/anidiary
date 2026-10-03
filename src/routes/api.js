@@ -6,7 +6,7 @@ const { requireJsonLogin } = require('../middleware/auth');
 const { csrfProtection } = require('../middleware/csrf');
 const { parseStoredJsonArray } = require('../db/stored-json');
 
-const VALID_STATUSES = ['following', 'watched'];
+const VALID_STATUSES = ['following', 'watching', 'watched'];
 
 function serializeSeriesEntry(anime, catalog) {
   if (!anime) return null;

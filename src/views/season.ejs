@@ -8,7 +8,8 @@
     <div class="controls">
       <div class="controls__tabs">
         <button class="tab active" data-tab="all"><%= ui.all %> (<%= animeList.length %>)</button>
-        <button class="tab" data-tab="following"><%= ui.following %> (<%= [...userStatuses.values()].filter(s => s).length %>)</button>
+        <button class="tab" data-tab="following"><%= ui.following %> (<%= [...userStatuses.values()].filter(s => s === 'following').length %>)</button>
+        <button class="tab" data-tab="watching"><%= ui.watching %> (<%= [...userStatuses.values()].filter(s => s === 'watching').length %>)</button>
       </div>
       <div class="controls__sort">
         <label><%= ui.sortBy %></label>
@@ -26,7 +27,7 @@
       <% for (const anime of animeList) { %>
         <%- include('partials/card', { anime, userStatus: userStatuses.get(anime.mal_id), langPref: user.langPref, ui, isCurrentSeason: true, initiallyHidden: false }) %>
       <% } %>
-      <% for (const anime of followedAnimeOutsideSeason) { %>
+      <% for (const anime of trackedAnimeOutsideSeason) { %>
         <%- include('partials/card', { anime, userStatus: userStatuses.get(anime.mal_id), langPref: user.langPref, ui, isCurrentSeason: false, initiallyHidden: true }) %>
       <% } %>
     </div>
@@ -74,6 +75,7 @@
         </div>
         <div class="modal__actions" id="modalActions">
           <button class="btn btn--follow" type="button" data-status="following">♡ <%= ui.follow %></button>
+          <button class="btn btn--watching" type="button" data-status="watching">▶ <%= ui.watching %></button>
           <button class="btn btn--jellyfin" type="button" data-jellyfin="true">📦 <%= ui.jellyfin %></button>
           <button class="btn btn--watched" type="button" data-status="watched">✓ <%= ui.watched %></button>
         </div>

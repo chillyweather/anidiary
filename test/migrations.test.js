@@ -27,7 +27,7 @@ function createLegacyDatabase(dbPath) {
 test('fresh database reaches latest version with foreign keys enabled', (t) => {
   const repository = createDatabase(temporaryPath(t));
   repository.init();
-  assert.equal(repository.db.pragma('user_version', { simple: true }), 2);
+  assert.equal(repository.db.pragma('user_version', { simple: true }), 3);
   assert.equal(repository.db.pragma('foreign_keys', { simple: true }), 1);
   const columns = repository.db.prepare('PRAGMA table_info(user_anime)').all().map((column) => column.name);
   assert.deepEqual(columns, ['user_id', 'mal_id', 'status', 'updated_at']);
@@ -67,7 +67,7 @@ test('migration stops without discarding episode progress', (t) => {
 
 test('failed migration does not advance its schema version', (t) => {
   const failingMigrations = [...migrations, {
-    version: 3,
+    version: 4,
     name: 'injected failure',
     up(db) {
       db.exec('CREATE TABLE should_rollback (id INTEGER)');
@@ -76,7 +76,7 @@ test('failed migration does not advance its schema version', (t) => {
   }];
   const repository = createDatabase(temporaryPath(t), { migrations: failingMigrations });
   assert.throws(() => repository.init(), /injected migration failure/);
-  assert.equal(repository.db.pragma('user_version', { simple: true }), 2);
+  assert.equal(repository.db.pragma('user_version', { simple: true }), 3);
   assert.equal(repository.db.prepare("SELECT name FROM sqlite_master WHERE name = 'should_rollback'").get(), undefined);
   repository.close();
 });
@@ -98,7 +98,7 @@ test('checkHealth reports schema version and database writability', (t) => {
   const repository = createDatabase(temporaryPath(t));
   repository.init();
   assert.deepEqual(repository.checkHealth(), {
-    schemaVersion: 2, expectedSchemaVersion: 2, writable: true
+    schemaVersion: 3, expectedSchemaVersion: 3, writable: true
   });
   assert.equal(repository.db.prepare("SELECT name FROM sqlite_master WHERE name = '_healthz_probe'").get(), undefined);
   repository.close();
@@ -117,8 +117,12 @@ test('personal status conflict updates preserve independent Jellyfin availabilit
   const user = repository.createUser('user', 'hash');
   repository.setAnimeJellyfinAvailability(1, true);
   repository.setUserAnimeStatus(user.id, 1, 'following');
+  repository.setUserAnimeStatus(user.id, 1, 'watching');
+  assert.equal(repository.getUserAnimeStatusByMalId(user.id, 1).status, 'watching');
+  assert.deepEqual(repository.getTabAnimeForUser(user.id).map((anime) => anime.mal_id), [1]);
   repository.setUserAnimeStatus(user.id, 1, 'watched');
   assert.equal(repository.getUserAnimeStatusByMalId(user.id, 1).status, 'watched');
+  assert.deepEqual(repository.getTabAnimeForUser(user.id), []);
   assert.equal(repository.getAnimeByMalId(1).in_jellyfin, 1);
   repository.close();
 });

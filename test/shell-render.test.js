@@ -11,7 +11,7 @@ async function renderSeason(langPref) {
   const ui = getCatalog(langPref);
   return ejs.renderFile(path.join(__dirname, '../src/views/season.ejs'), {
     animeList: [],
-    followedAnimeOutsideSeason: [],
+    trackedAnimeOutsideSeason: [],
     userStatuses: new Map(),
     year: 2026,
     season: 'spring',

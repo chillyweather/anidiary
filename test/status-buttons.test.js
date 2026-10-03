@@ -16,15 +16,17 @@ function createDom({ fetchHandler } = {}) {
       <head><meta name="csrf-token" content="csrf-token"></head>
       <body>
         <script id="localeCatalog" type="application/json">
-          {"code":"en","following":"Following","loading":"Loading","released":"Released","episode":"Episode","episodeForms":["episode","episodes"],"countdown":{"days":"{days}d {hours}h","hours":"{hours}h {minutes}m","minutes":"{minutes}m"}}
+          {"code":"en","following":"Following","watching":"Watching","loading":"Loading","released":"Released","episode":"Episode","episodeForms":["episode","episodes"],"countdown":{"days":"{days}d {hours}h","hours":"{hours}h {minutes}m","minutes":"{minutes}m"}}
         </script>
         <button class="tab active" data-tab="all">All</button>
         <button class="tab" data-tab="following">Following (0)</button>
+        <button class="tab" data-tab="watching">Watching (0)</button>
         <div class="card-grid">
-          <div class="card" data-mal-id="1" data-followed="false" data-in-current-season="true" data-status="">
+          <div class="card" data-mal-id="1" data-in-current-season="true" data-status="">
             <button class="btn btn--more" data-moreless="more">More</button>
             <div class="card__actions">
               <button class="btn btn--follow" data-status="following">Follow</button>
+              <button class="btn btn--watching" data-status="watching">Watching</button>
               <button class="btn btn--jellyfin" data-jellyfin="true">Jellyfin</button>
               <button class="btn btn--watched" data-status="watched">Watched</button>
             </div>
@@ -52,6 +54,7 @@ function createDom({ fetchHandler } = {}) {
             </div>
             <div id="modalActions">
               <button class="btn btn--follow" data-status="following">Follow</button>
+              <button class="btn btn--watching" data-status="watching">Watching</button>
               <button class="btn btn--jellyfin" data-jellyfin="true">Jellyfin</button>
               <button class="btn btn--watched" data-status="watched">Watched</button>
             </div>
@@ -122,7 +125,6 @@ test('card status buttons send requests and update visible state', async () => {
   assert.deepEqual(fetchCalls.at(-1).body, { mal_id: 1, status: 'following' });
   assert.equal(fetchCalls.at(-1).options.headers['X-CSRF-Token'], 'csrf-token');
   assert.equal(card.dataset.status, 'following');
-  assert.equal(card.dataset.followed, 'true');
   assert.equal(card.classList.contains('card--following'), true);
   assert.equal(document.querySelector('.card__actions [data-status="following"]').classList.contains('active'), true);
 
@@ -187,4 +189,33 @@ test('failed status updates show a visible action error', async () => {
   assert.equal(error.hidden, false);
   assert.equal(error.textContent, 'Invalid CSRF token');
   assert.equal(document.querySelector('.card').dataset.status, '');
+});
+
+test('following and watching tabs only list cards in that exact status', async () => {
+  const { document } = createDom();
+  const card = document.querySelector('.card');
+  const followingTab = document.querySelector('.tab[data-tab="following"]');
+  const watchingTab = document.querySelector('.tab[data-tab="watching"]');
+
+  await click(document.querySelector('.card__actions [data-status="following"]'));
+  await click(followingTab);
+  assert.equal(followingTab.textContent, 'Following (1)');
+  assert.equal(card.classList.contains('card--hidden'), false);
+
+  await click(document.querySelector('.card__actions [data-status="watching"]'));
+  assert.equal(card.dataset.status, 'watching');
+  assert.equal(card.classList.contains('card--watching'), true);
+  assert.equal(card.classList.contains('card--following'), false);
+  assert.equal(followingTab.textContent, 'Following (0)');
+  assert.equal(watchingTab.textContent, 'Watching (1)');
+  assert.equal(card.classList.contains('card--hidden'), true);
+
+  await click(watchingTab);
+  assert.equal(card.classList.contains('card--hidden'), false);
+
+  await click(document.querySelector('.card__actions [data-status="watched"]'));
+  assert.equal(watchingTab.textContent, 'Watching (0)');
+  assert.equal(card.classList.contains('card--hidden'), true);
+  await click(followingTab);
+  assert.equal(card.classList.contains('card--hidden'), true);
 });

@@ -47,6 +47,30 @@ const migrations = [
         CREATE INDEX idx_user_anime_status ON user_anime(user_id, status);
       `);
     }
+  },
+  {
+    version: 3,
+    name: 'allow watching as a personal status',
+    up(db) {
+      db.exec(`
+        CREATE TABLE user_anime_next (
+          user_id INTEGER NOT NULL,
+          mal_id INTEGER NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('following', 'watching', 'watched')),
+          updated_at INTEGER DEFAULT (unixepoch()),
+          PRIMARY KEY (user_id, mal_id),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (mal_id) REFERENCES anime(mal_id) ON DELETE CASCADE
+        );
+        INSERT INTO user_anime_next (user_id, mal_id, status, updated_at)
+          SELECT user_id, mal_id, status, updated_at FROM user_anime;
+        DROP TABLE user_anime;
+        ALTER TABLE user_anime_next RENAME TO user_anime;
+
+        CREATE INDEX idx_user_anime_user ON user_anime(user_id);
+        CREATE INDEX idx_user_anime_status ON user_anime(user_id, status);
+      `);
+    }
   }
 ];
 
