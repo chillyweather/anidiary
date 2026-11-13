@@ -86,7 +86,7 @@ test('every script on the authenticated shell is versioned', async () => {
     localeJson: '{}', asset: assets.url
   });
   const sources = [...html.matchAll(/<script src="([^"]+)"/g)].map((match) => match[1]);
-  assert.equal(sources.length, 4);
+  assert.equal(sources.length, 5);
   for (const source of sources) assert.match(source, /^\/js\/[\w-]+\.js\?v=[0-9a-f]{10}$/);
 });
 
@@ -112,4 +112,40 @@ test('asset versions follow edits in development and stay fixed in production', 
   assert.equal(development.url('/js/missing.js'), '/js/missing.js');
   assert.equal(development.url('/favicon.ico'), '/favicon.ico');
   assert.equal(development.url('/js/../../etc/passwd'), '/js/../../etc/passwd');
+});
+
+test('self-hosted fonts are linked at their content hash, preloaded at the same URL and cached immutably', async (t) => {
+  const css = fs.readFileSync(path.join(publicDir, 'css/style.css'), 'utf8');
+  const fontUrls = [...css.matchAll(/url\('(\/fonts\/[\w-]+\.woff2\?v=[0-9a-f]{10})'\)/g)].map((match) => match[1]);
+  assert.deepEqual(fontUrls.map((url) => url.split('?')[0]), ['/fonts/onest.woff2', '/fonts/unbounded.woff2']);
+  for (const url of fontUrls) {
+    const [file, version] = url.split('?v=');
+    assert.equal(version, contentHash(path.join(publicDir, file)),
+      `${file} changed: update its ?v= hash in style.css`);
+  }
+  for (const licence of ['OFL-Onest.txt', 'OFL-Unbounded.txt']) {
+    assert.match(fs.readFileSync(path.join(publicDir, 'fonts', licence), 'utf8'), /SIL Open Font License/);
+  }
+
+  await withApp(t, { isProduction: true }, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/login`);
+    const csp = response.headers.get('content-security-policy');
+    assert.match(csp, /style-src 'self';/);
+    assert.match(csp, /font-src 'self';/);
+    assert.doesNotMatch(csp, /googleapis|gstatic/);
+    const html = await response.text();
+    for (const url of fontUrls) {
+      assert.ok(html.includes(`<link rel="preload" href="${url}" as="font" type="font/woff2" crossorigin>`), url);
+      const font = await fetch(`${baseUrl}${url}`);
+      assert.equal(font.status, 200);
+      assert.equal(font.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+      assert.match(font.headers.get('content-type'), /font\/woff2/);
+    }
+    const stale = await fetch(`${baseUrl}/fonts/onest.woff2?v=0000000000`);
+    assert.equal(stale.headers.get('cache-control'), 'no-cache');
+
+    const mascot = await fetch(`${baseUrl}/img/mascot.webp`);
+    assert.equal(mascot.status, 200);
+    assert.ok(Number(mascot.headers.get('content-length')) < 40 * 1024, 'the login mascot is a small copy');
+  });
 });

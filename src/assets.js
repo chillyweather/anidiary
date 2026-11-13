@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const VERSIONED_DIRECTORIES = ['css', 'js'];
+const VERSIONED_DIRECTORIES = ['css', 'js', 'fonts'];
 const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable';
 const REVALIDATE_CACHE = 'no-cache';
 
@@ -10,9 +10,10 @@ function hashFile(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex').slice(0, 10);
 }
 
-// Content-hash versions for /css and /js. Views link `asset('/js/app.js')`,
+// Content-hash versions for /css, /js and /fonts. Views link `asset('/js/app.js')`,
 // which becomes `/js/app.js?v=<hash>`; only a request carrying the current hash
-// may be cached for a year. In development (`watch`), a changed mtime rehashes
+// may be cached for a year. The stylesheet cannot call asset(), so its
+// @font-face URLs carry the hash literally (a test keeps them current). In development (`watch`), a changed mtime rehashes
 // the file so edits show up without a restart.
 function createAssetVersions(publicDir, { watch = false } = {}) {
   const root = path.resolve(publicDir);

@@ -1,40 +1,18 @@
-<nav class="nav" aria-label="<%= ui.season %>">
+<header class="nav">
   <a class="nav__logo" href="/">anidiary</a>
-  <div class="nav__season-picker">
-    <a class="nav__season-link" href="/season/<%= adjacentSeasons.prevYear %>/<%= adjacentSeasons.prevSeason %>">
-      ← <%= ui.seasons[adjacentSeasons.prevSeason] %> <%= adjacentSeasons.prevYear %>
-    </a>
-    <span class="nav__current"><%= ui.seasons[season] %> <%= year %></span>
-    <a class="nav__season-link" href="/season/<%= adjacentSeasons.nextYear %>/<%= adjacentSeasons.nextSeason %>">
-      <%= ui.seasons[adjacentSeasons.nextSeason] %> <%= adjacentSeasons.nextYear %> →
-    </a>
-    <label class="visually-hidden" for="season-select"><%= ui.season %></label>
-    <select class="nav-select season-select" id="season-select">
-      <option value="/season/<%= adjacentSeasons.prevYear %>/<%= adjacentSeasons.prevSeason %>">
-        <%= ui.seasons[adjacentSeasons.prevSeason] %> '<%= String(adjacentSeasons.prevYear).slice(-2) %>
-      </option>
-      <option value="/season/<%= year %>/<%= season %>" selected>
-        <%= ui.seasons[season] %> '<%= String(year).slice(-2) %>
-      </option>
-      <option value="/season/<%= adjacentSeasons.nextYear %>/<%= adjacentSeasons.nextSeason %>">
-        <%= ui.seasons[adjacentSeasons.nextSeason] %> '<%= String(adjacentSeasons.nextYear).slice(-2) %>
-      </option>
-    </select>
-  </div>
+  <nav class="nav__seasons" aria-label="<%= ui.season %>">
+    <a class="nav__step nav__step--prev" rel="prev" href="/season/<%= adjacentSeasons.prevYear %>/<%= adjacentSeasons.prevSeason %>"><span class="nav__step-label"><%= ui.seasons[adjacentSeasons.prevSeason] %> <%= adjacentSeasons.prevYear %></span></a>
+    <h1 class="nav__season"><%= ui.seasons[season] %> <%= year %></h1>
+    <a class="nav__step nav__step--next" rel="next" href="/season/<%= adjacentSeasons.nextYear %>/<%= adjacentSeasons.nextSeason %>"><span class="nav__step-label"><%= ui.seasons[adjacentSeasons.nextSeason] %> <%= adjacentSeasons.nextYear %></span></a>
+  </nav>
   <div class="nav__right">
-    <div class="lang-toggle">
-      <button data-lang="en" class="<%= user.langPref === 'en' ? 'active' : '' %>">EN</button>
-      <button data-lang="jp" class="<%= user.langPref === 'jp' ? 'active' : '' %>">JP</button>
-      <button data-lang="ru" class="<%= user.langPref === 'ru' ? 'active' : '' %>">RU</button>
+    <div class="lang-toggle" role="group" aria-label="<%= ui.language %>">
+      <% for (const [code, label] of [['en', 'EN'], ['jp', 'JP'], ['ru', 'RU']]) { %>
+        <button type="button" data-lang="<%= code %>" aria-pressed="<%= user.langPref === code ? 'true' : 'false' %>"><%= label %></button>
+      <% } %>
     </div>
-    <label class="visually-hidden" for="language-select"><%= ui.language %></label>
-    <select class="nav-select language-select" id="language-select">
-      <option value="en" <%= user.langPref === 'en' ? 'selected' : '' %>>EN</option>
-      <option value="jp" <%= user.langPref === 'jp' ? 'selected' : '' %>>JP</option>
-      <option value="ru" <%= user.langPref === 'ru' ? 'selected' : '' %>>RU</option>
-    </select>
     <details class="account-menu">
-      <summary class="nav__user"><%= user.username %></summary>
+      <summary class="nav__user" aria-label="<%= ui.account %>: <%= user.username %>"><span class="nav__avatar" aria-hidden="true"><%= String(user.username || '?').charAt(0).toUpperCase() %></span><span class="nav__username"><%= user.username %></span></summary>
       <div class="account-menu__panel">
         <form method="POST" action="/logout" class="logout-form">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>">
@@ -43,4 +21,4 @@
       </div>
     </details>
   </div>
-</nav>
+</header>

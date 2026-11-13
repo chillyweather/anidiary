@@ -1,31 +1,36 @@
 <!DOCTYPE html>
 <html lang="en">
-<%- include('partials/head', { title: 'Register' }) %>
+<%- include('partials/head', { title: 'Create account' }) %>
 <body class="auth-page">
-  <div class="auth-card">
-    <h1 class="auth-card__title">anidiary</h1>
-    <p class="auth-card__subtitle">Create your account</p>
-    
-    <% if (error) { %>
-    <div class="auth-card__error"><%= error %></div>
-    <% } %>
-    
-    <form class="auth-card__form" method="POST" action="/register">
-      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-      <div class="form-group">
-        <label for="username">Username</label>
-        <input type="text" id="username" name="username" required autofocus minlength="3" maxlength="20" pattern="[a-zA-Z0-9_]+">
-        <small>3-20 characters, letters, numbers, and underscores only</small>
+  <main class="auth">
+    <div class="auth-card">
+      <p class="auth-card__band"><a href="/login">anidiary</a></p>
+      <div class="auth-card__body">
+        <h1 class="auth-card__title">Create account</h1>
+        <p class="auth-card__subtitle">Each person in the household gets their own lists.</p>
+
+        <% if (error) { %>
+        <p class="auth-card__error" role="alert"><%= error %></p>
+        <% } %>
+
+        <form class="auth-card__form" method="POST" action="/register">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" autocomplete="username" autocapitalize="none" required autofocus minlength="3" maxlength="20" pattern="[a-zA-Z0-9_]+" aria-describedby="username-hint">
+            <small id="username-hint">3 to 20 characters: letters, numbers and underscores.</small>
+          </div>
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" autocomplete="new-password" required minlength="12" aria-describedby="password-hint">
+            <small id="password-hint">At least 12 characters (and at most 72 bytes).</small>
+          </div>
+          <button type="submit" class="btn btn--primary btn--full">Create account</button>
+        </form>
+
+        <p class="auth-card__link">Already have an account? <a href="/login">Log in</a></p>
       </div>
-      <div class="form-group">
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" required minlength="12">
-        <small>At least 12 characters and at most 72 UTF-8 bytes</small>
-      </div>
-      <button type="submit" class="btn btn--primary btn--full">Register</button>
-    </form>
-    
-    <p class="auth-card__link">Already have an account? <a href="/login">Login</a></p>
-  </div>
+    </div>
+  </main>
 </body>
 </html>

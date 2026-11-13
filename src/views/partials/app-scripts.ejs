@@ -1,6 +1,7 @@
 <% const assetUrl = typeof asset === 'function' ? asset : (url) => url; %>
 <script id="localeCatalog" type="application/json"><%- localeJson %></script>
+<script src="<%= assetUrl('/js/catalogue.js') %>"></script>
+<script src="<%= assetUrl('/js/title-item.js') %>"></script>
 <script src="<%= assetUrl('/js/detail-loader.js') %>"></script>
 <script src="<%= assetUrl('/js/modal-rendering.js') %>"></script>
-<script src="<%= assetUrl('/js/modal-focus.js') %>"></script>
 <script src="<%= assetUrl('/js/app.js') %>"></script>

@@ -105,18 +105,20 @@ test('application serves an authenticated session from an isolated database', as
   const englishSession = await renderFor('tester');
   const englishHtml = englishSession.html;
   assert.match(englishHtml, /Spring 2026/);
-  assert.match(englishHtml, />Language</);
+  assert.match(englishHtml, /aria-label="Title language"/);
+  assert.match(englishHtml, /<h1 class="nav__season">Spring 2026<\/h1>/);
   assert.doesNotMatch(englishHtml, /data-modal=/);
   assert.doesNotMatch(englishHtml, /FULL_SYNOPSIS_TAIL/);
 
   const russianHtml = (await renderFor('russian')).html;
   assert.match(russianHtml, /Весна 2026/);
   assert.match(russianHtml, /Связанные аниме/);
+  assert.match(russianHtml, /aria-label="Язык названий"/);
 
   const japaneseHtml = (await renderFor('japanese')).html;
   assert.match(japaneseHtml, /日本語タイトル/);
-  assert.match(japaneseHtml, />Language</);
-  assert.doesNotMatch(japaneseHtml, />Язык</);
+  assert.match(japaneseHtml, /aria-label="Title language"/);
+  assert.doesNotMatch(japaneseHtml, /Язык названий/);
 
   const authenticatedDetail = await fetch(`${baseUrl}/api/anime/1`, {
     headers: { cookie: englishSession.cookie }

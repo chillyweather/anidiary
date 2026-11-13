@@ -85,6 +85,15 @@ const SQL = {
   `,
   userAnimeStatus: 'SELECT mal_id, status FROM user_anime WHERE user_id = ?',
   userAnimeStatusByMalId: 'SELECT status FROM user_anime WHERE user_id = ? AND mal_id = ?',
+  // Personal states of the other household members (read-only for the viewer).
+  otherUsersStatuses: `
+    SELECT ua.mal_id, u.username, ua.status FROM user_anime ua JOIN users u ON u.id = ua.user_id
+    WHERE ua.user_id != ? ORDER BY u.username, ua.mal_id
+  `,
+  otherUsersStatusesByMalId: `
+    SELECT u.username, ua.status FROM user_anime ua JOIN users u ON u.id = ua.user_id
+    WHERE ua.user_id != ? AND ua.mal_id = ? ORDER BY u.username
+  `,
   tabAnimeForUser: `
     SELECT a.* FROM user_anime ua JOIN anime a ON a.mal_id = ua.mal_id
     WHERE ua.user_id = ? AND ua.status IN ('following', 'watching') ORDER BY ua.updated_at DESC
@@ -176,6 +185,8 @@ function createDatabase(dbPath, { migrations = defaultMigrations } = {}) {
     getUserAnimeStatus: (userId) => statement('userAnimeStatus').all(userId),
     getUserAnimeStatusByMalId: (userId, malId) => statement('userAnimeStatusByMalId').get(userId, malId),
     getTabAnimeForUser: (userId) => statement('tabAnimeForUser').all(userId),
+    getOtherUsersStatuses: (userId) => statement('otherUsersStatuses').all(userId),
+    getOtherUsersStatusesByMalId: (userId, malId) => statement('otherUsersStatusesByMalId').all(userId, malId),
     setUserAnimeStatus: (userId, malId, status) => statement('setUserAnimeStatus').run(userId, malId, status),
     setAnimeJellyfinAvailability: (malId, available) => statement('setJellyfin').run(available ? 1 : 0, malId),
     removeUserAnimeStatus: (userId, malId) => statement('removeUserAnimeStatus').run(userId, malId),
@@ -184,7 +195,7 @@ function createDatabase(dbPath, { migrations = defaultMigrations } = {}) {
         const result = statement('createUser').run(username, passwordHash);
         return { id: result.lastInsertRowid };
       } catch (err) {
-        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') return { error: 'Username already exists' };
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') return { error: 'That username is taken. Choose another one.' };
         throw err;
       }
     },

@@ -2,7 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-06-19
-- Amended: 2026-10-03 (added the `watching` state; see Amendments)
+- Amended: 2026-10-03 (added the `watching` state), 2026-11-13 (household
+  visibility of personal states); see Amendments
 - Decision owners: Anidiary maintainers
 
 ## Context
@@ -64,3 +65,18 @@ Personal tracking now has a third mutually exclusive state, `watching`. Migratio
 v3 rebuilds `user_anime` so its status check accepts `following`, `watching`, and
 `watched`; existing rows are carried over unchanged. `watching` records only that
 the anime is in progress and does not reintroduce episode-level progress.
+
+### 2026-11-13: Personal states are visible to the household
+
+The season page and the detail dialog show the other household members' personal
+state for each title, as a chip with the member's initial and the state as text.
+This answers "has my partner seen this?" without asking.
+
+- Every authenticated user can read every other user's personal states; the
+  repository exposes them through `getOtherUsersStatuses` and
+  `getOtherUsersStatusesByMalId`. Anidiary is a household application, so this
+  is not treated as private data.
+- Personal states remain writable only by their owner: `POST /api/mark` writes
+  the session user's row and ignores any user named in the request.
+- Shared Jellyfin availability is unchanged: one flag per anime that either user
+  may toggle.

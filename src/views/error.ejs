@@ -2,10 +2,14 @@
 <html lang="en">
 <%- include('partials/head', { title: 'Error' }) %>
 <body class="auth-page">
-  <div class="auth-card">
-    <h1 class="auth-card__title">anidiary</h1>
-    <p class="auth-card__subtitle"><%= error || 'Something went wrong' %></p>
-    <p class="auth-card__link"><a href="/">Go back</a></p>
-  </div>
+  <main class="auth">
+    <div class="auth-card">
+      <p class="auth-card__band"><a href="/">anidiary</a></p>
+      <div class="auth-card__body">
+        <h1 class="auth-card__title"><%= error || 'The server hit an error while loading this page. Try again in a minute.' %></h1>
+        <p class="auth-card__link"><a href="/">Go to the current season</a></p>
+      </div>
+    </div>
+  </main>
 </body>
 </html>

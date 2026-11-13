@@ -30,11 +30,18 @@ characters and no more than 72 UTF-8 bytes. Set `TRUST_PROXY=1` for the document
 single reverse-proxy deployment, or provide a comma-separated trusted subnet list;
 leave it unset when clients connect directly.
 
-Views link CSS and JS through `asset('/js/app.js')`, which appends a content hash
-(`?v=<hash>`); a request with the current hash is cached for a year as immutable,
-anything else is `no-cache` and revalidates by ETag. Hashes are computed at
-startup, and recomputed on file change outside production. Other files in
-`public/` are cached for a day.
+Views link CSS, JS and fonts through `asset('/js/app.js')`, which appends a content
+hash (`?v=<hash>`); a request with the current hash is cached for a year as
+immutable, anything else is `no-cache` and revalidates by ETag. Hashes are computed
+at startup, and recomputed on file change outside production. The stylesheet's
+`@font-face` URLs carry the hash literally; `test/static-assets.test.js` fails when a
+font changes without its hash being updated. Other files in `public/` are cached for
+a day.
+
+The fonts (Unbounded for the wordmark, season and weekday names; Onest for
+everything else) are self-hosted variable WOFF2 files subset to Latin and Cyrillic,
+under the SIL Open Font License (`public/fonts/OFL-*.txt`). Japanese text uses the
+system's CJK fonts.
 
 Sessions are stored in SQLite only when needed: an anonymous visitor gets one (for
 the form's CSRF token) only from `GET /login` or `GET /register`, and it expires
@@ -42,9 +49,21 @@ after 1 hour; logging in replaces it with a 30-day session.
 
 ## What It Does
 
-- **Seasonal anime calendar** — see what's airing this season with countdowns to next episodes
-- **Viewing tracker** — mark a personal state as `following` or `watched`, independently from shared Jellyfin availability
-- **Multi-language titles** — toggle between English, Japanese, and Russian titles (Shikimori for RU)
+- **Your week** — the next seven days in your own time zone, starting today, with
+  the episodes of every title you follow or watch (from any season) at their local
+  air time
+- **Season catalogue** — a poster grid on desktop and compact rows on phones, with
+  countdowns, episode progress and scores; search across English, Japanese and
+  Russian titles, filter by format, hide watched titles, and sort by popularity,
+  score, next episode or title (the list, format, hide-watched and sort choices are
+  remembered per browser)
+- **Viewing tracker** — one personal state per title (`following`, `watching` or
+  `watched`), shown as a tab on the poster; Jellyfin availability is a separate
+  shared badge. The other household member's state shows as an initial chip
+- **Detail dialog** — synopsis, genres, score links, related titles (those in the
+  catalogue open in the dialog) and prequel/sequel navigation
+- **Multi-language titles** — English, Japanese, and Russian titles (Shikimori for
+  RU), with an English or Russian interface
 - **Three-score comparison** — MAL, AniList, and Shikimori ratings side by side
 - **Auto-sync** — a background scheduler keeps the current, next, and (while still
   airing) previous season fresh, refreshes countdowns soon after each episode airs,
@@ -104,10 +123,17 @@ anidiary/
 │   └── seed-all-seasons.js   # CLI: backfill a range of seasons
 ├── public/
 │   ├── css/style.css
-│   └── js/app.js             # countdowns, status toggles, sorting
+│   ├── fonts/                # self-hosted Onest and Unbounded (WOFF2) + licences
+│   ├── img/mascot.webp       # login page mascot (small copy of anidiary.png)
+│   └── js/
+│       ├── catalogue.js      # pure: filters, sort, countdown text, week grouping
+│       ├── title-item.js     # catalogue item markup, shared by server (HTML) and browser (DOM)
+│       ├── detail-loader.js  # detail fetch cache, stale-response guard
+│       ├── modal-rendering.js # safe rendering of related titles
+│       └── app.js            # season page wiring (one delegated click handler)
 └── src/
     ├── app.js                # Side-effect-free Express application factory
-    ├── assets.js             # Content-hash URLs for /css and /js
+    ├── assets.js             # Content-hash URLs for /css, /js and /fonts
     ├── scheduler.js          # Staleness-driven background sync scheduler
     ├── db/
     │   ├── db.js             # SQLite init + helpers
@@ -130,7 +156,7 @@ anidiary/
         ├── register.ejs
         ├── season.ejs
         ├── error.ejs
-        └── partials/card.ejs
+        └── partials/         # head, navigation, title (renders title-item.js), app-scripts
 ```
 
 ## API Endpoints

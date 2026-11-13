@@ -39,7 +39,21 @@ function resolveSeriesTarget(related, relationName, getAnimeByMalId, catalog) {
   return null;
 }
 
-function normalizeAnimeForModal(anime, related, userStatus, getAnimeByMalId, catalog) {
+// Related entries that exist in our catalogue carry `local` (titles and season),
+// so the dialog can open them; others stay plain text.
+function annotateRelated(related, getAnimeByMalId, catalog) {
+  return related.map((relation) => ({
+    ...relation,
+    entries: (relation?.entries || []).map((entry) => {
+      const isAnime = String(entry?.type || 'anime').toLowerCase() === 'anime';
+      const malId = Number(entry?.mal_id);
+      const local = isAnime && Number.isInteger(malId) && malId > 0 ? getAnimeByMalId(malId) : null;
+      return local ? { ...entry, local: serializeSeriesEntry(local, catalog) } : entry;
+    })
+  }));
+}
+
+function normalizeAnimeForModal(anime, related, userStatus, getAnimeByMalId, catalog, partners = []) {
   return {
     mal_id: anime.mal_id,
     title_en: anime.title_en,
@@ -58,10 +72,13 @@ function normalizeAnimeForModal(anime, related, userStatus, getAnimeByMalId, cat
     next_ep_num: anime.next_ep_num,
     next_ep_at: anime.next_ep_at,
     anilist_id: anime.anilist_id,
+    format: anime.format,
+    popularity: anime.popularity,
     genres: parseStoredJsonArray(anime.genres, { field: 'genres', malId: anime.mal_id }),
-    related,
+    related: annotateRelated(related, getAnimeByMalId, catalog),
     in_jellyfin: Boolean(anime.in_jellyfin),
     user_status: userStatus,
+    partners,
     series_nav: {
       previous: resolveSeriesTarget(related, 'Prequel', getAnimeByMalId, catalog),
       next: resolveSeriesTarget(related, 'Sequel', getAnimeByMalId, catalog)
@@ -75,7 +92,8 @@ function createApiRouter(repository) {
 const router = express.Router();
 const {
   setUserAnimeStatus, removeUserAnimeStatus, getAnimeByMalId,
-  getUserAnimeStatusByMalId, updateUserLangPref, setAnimeJellyfinAvailability
+  getUserAnimeStatusByMalId, updateUserLangPref, setAnimeJellyfinAvailability,
+  getOtherUsersStatusesByMalId
 } = repository;
 
 router.post('/mark', requireJsonLogin, csrfProtection, async (req, res) => {
@@ -135,9 +153,13 @@ router.get('/anime/:mal_id', requireJsonLogin, (req, res) => {
       ? getUserAnimeStatusByMalId(req.session.userId, malId)
       : null;
 
+    // Other household members' states are visible, never writable (ADR 0001).
+    const partners = getOtherUsersStatusesByMalId(req.session.userId, malId)
+      .map(({ username, status }) => ({ username, status }));
+
     return res.json(normalizeAnimeForModal(
       anime, related, userStatusRow?.status || null, getAnimeByMalId,
-      getCatalog(req.session?.langPref)
+      getCatalog(req.session?.langPref), partners
     ));
   } catch (err) {
     console.error('Failed to fetch anime details:', err);

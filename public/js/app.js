@@ -1,679 +1,784 @@
-let currentModalMalId = null;
-let currentModalStatus = '';
-const localeCatalog = JSON.parse(document.getElementById('localeCatalog')?.textContent || '{}');
-const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
-const detailLoader = window.DetailLoader.createDetailLoader(fetchAnimeDetails);
-let modalFocusController = null;
+// Season page wiring: one delegated click handler for the catalogue, the week
+// strip and the detail dialog; filters and sort; minute-aligned countdowns.
+//
+// State lives in one per-title store (`titles`): counts, tabs, filters, sort and
+// the week strip all read it, and every grid item is a rendering of a record.
+// Writes are coordinated per title (`writes`): one status write and one
+// Jellyfin write at a time, each completed write bumps a revision, and a detail
+// payload never overwrites a value written after its request started.
+(function startSeasonPage() {
+  const { Catalogue, DetailLoader, ModalRendering, TitleItem } = window;
+  const ui = JSON.parse(document.getElementById('localeCatalog')?.textContent || '{}');
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  const detailLoader = DetailLoader.createDetailLoader(fetchAnimeDetails);
+  const STORAGE_KEY = 'anidiary.view';
+  const PERSISTED = ['tab', 'format', 'hideWatched', 'sort'];
+  const TABS = ['all', 'following', 'watching'];
 
-function jsonHeaders() {
-  return { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken };
-}
+  const view = { tab: 'all', format: 'all', hideWatched: false, sort: 'popularity', query: '' };
+  const titles = new Map();
+  const writes = new Map();
+  let currentModalMalId = null;
+  // The dialog's actions are usable only once the open title's details loaded.
+  let dialogReady = false;
+  let dialogOpener = null;
+  let dialogOpenerMalId = null;
+  let weekSignature = '';
 
-async function postJson(url, payload) {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: jsonHeaders(),
-    body: JSON.stringify(payload)
+  const byId = (id) => document.getElementById(id);
+  const catalogueEl = () => byId('catalogue');
+  const dialog = () => byId('animeModal');
+  const nowMs = () => Date.now();
+  const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  function uiText(key, values = {}) {
+    const template = key.split('.').reduce((value, part) => value?.[part], ui) ?? key;
+    return Catalogue.fill(template, values);
+  }
+
+  // ─── Requests ──────────────────────────────────────────────
+
+  async function postJson(url, payload) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || `Request failed (${response.status})`);
+    return data;
+  }
+
+  async function fetchAnimeDetails(malId) {
+    const response = await fetch(`/api/anime/${malId}`);
+    if (!response.ok) throw new Error(`Failed to load anime ${malId}: ${response.status}`);
+    return response.json();
+  }
+
+  function showActionError(message) {
+    let error = byId('actionError');
+    if (!error) {
+      error = document.createElement('div');
+      error.id = 'actionError';
+      error.className = 'action-error';
+      error.setAttribute('role', 'alert');
+      document.body.appendChild(error);
+    }
+    error.textContent = message;
+    error.hidden = false;
+    clearTimeout(showActionError.timeoutId);
+    showActionError.timeoutId = setTimeout(() => { error.hidden = true; }, 5000);
+  }
+
+  // ─── Titles ────────────────────────────────────────────────
+
+  function currentLang() {
+    return document.querySelector('.lang-toggle [aria-pressed="true"]')?.dataset.lang || 'en';
+  }
+
+  function displayTitle(data) {
+    const lang = currentLang();
+    if (lang === 'jp') return data.title_jp || data.title_en || data.title_ru || '';
+    if (lang === 'ru') return data.title_ru || data.title_en || data.title_jp || '';
+    return data.title_en || data.title_jp || data.title_ru || '';
+  }
+
+  // Japanese titles in JP mode are marked so the right glyphs and voice are used.
+  function titleLang(data) {
+    return currentLang() === 'jp' && data.title_jp && displayTitle(data) === data.title_jp ? 'ja' : '';
+  }
+
+  const records = () => [...titles.values()];
+  const itemFor = (malId) => titles.get(Number(malId))?.element || null;
+
+  function writeStateFor(malId) {
+    if (!writes.has(malId)) {
+      writes.set(malId, {
+        status: { pending: false, revision: 0, value: null },
+        jellyfin: { pending: false, revision: 0, value: null }
+      });
+    }
+    return writes.get(malId);
+  }
+
+  function register(element) {
+    const record = readItem(element);
+    titles.set(record.malId, record);
+    return record;
+  }
+
+  function readItem(element) {
+    const data = element.dataset;
+    const title = element.querySelector('.title__open')?.textContent || '';
+    return {
+      element,
+      malId: Number(data.malId),
+      status: data.status || '',
+      jellyfin: element.hasAttribute('data-jellyfin'),
+      format: data.format || '',
+      search: `${Catalogue.normalizeText(title)}\n${data.search || ''}`,
+      inSeason: !element.hasAttribute('data-other-season'),
+      popularity: Number(data.popularity) || 0,
+      scoreMal: Number(data.scoreMal) || 0,
+      scoreAnilist: Number(data.scoreAnilist) || 0,
+      scoreShiki: Number(data.scoreShiki) || 0,
+      nextEpAt: Number(data.nextEpAt) || 0,
+      nextEp: data.nextEp || '',
+      title,
+      lang: element.querySelector('.title__open')?.lang || '',
+      poster: element.querySelector('img.title__poster')?.getAttribute('src') || ''
+    };
+  }
+
+  // ─── Filters, sort and counts ──────────────────────────────
+
+  function loadPreferences() {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '{}');
+      if (TABS.includes(saved.tab)) view.tab = saved.tab;
+      if (['all', ...Object.keys(Catalogue.FORMAT_GROUPS)].includes(saved.format)) view.format = saved.format;
+      if (typeof saved.hideWatched === 'boolean') view.hideWatched = saved.hideWatched;
+      if (byId('sort-select')?.querySelector(`option[value="${saved.sort}"]`)) view.sort = saved.sort;
+    } catch {
+      // Storage may be unavailable (private mode, blocked); defaults apply.
+    }
+  }
+
+  function savePreferences() {
+    try {
+      const saved = Object.fromEntries(PERSISTED.map((key) => [key, view[key]]));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    } catch {
+      // Not remembered; the page still works.
+    }
+  }
+
+  function syncControls() {
+    document.querySelectorAll('.tab').forEach((tab) => {
+      tab.setAttribute('aria-pressed', String(tab.dataset.tab === view.tab));
+    });
+    const format = byId('format-filter');
+    if (format) format.value = view.format;
+    const hide = byId('hide-watched');
+    if (hide) hide.checked = view.hideWatched;
+    const sort = byId('sort-select');
+    if (sort) sort.value = view.sort;
+  }
+
+  function applyView() {
+    let visible = 0;
+    for (const record of records()) {
+      const shown = Catalogue.matches(record, view);
+      record.element.hidden = !shown;
+      if (shown) visible++;
+    }
+    const empty = byId('noMatch');
+    const seasonHasTitles = records().some((record) => record.inSeason);
+    if (empty) empty.hidden = visible > 0 || (view.tab === 'all' && !seasonHasTitles && !view.query);
+  }
+
+  // Reorders only when the order changed, keeping focus on the focused item.
+  function applySort() {
+    const list = catalogueEl();
+    if (!list) return;
+    const sorted = records().sort(Catalogue.comparator(view.sort, Math.floor(nowMs() / 1000), ui.intlLocale));
+    const current = [...list.children];
+    if (sorted.every((record, index) => record.element === current[index])) return;
+    const focused = list.contains(document.activeElement) ? document.activeElement : null;
+    for (const record of sorted) list.appendChild(record.element);
+    if (focused && document.activeElement !== focused) focused.focus({ preventScroll: true });
+  }
+
+  function updateTabCounts() {
+    for (const status of ['following', 'watching']) {
+      const count = document.querySelector(`.tab[data-tab="${status}"] .tab__count`);
+      if (count) count.textContent = String(records().filter((record) => record.status === status).length);
+    }
+  }
+
+  // ─── Countdowns ────────────────────────────────────────────
+
+  const absoluteFormat = () => new Intl.DateTimeFormat(ui.intlLocale, {
+    weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
   });
-  const data = await response.json().catch(() => ({}));
 
-  if (!response.ok || !data.ok) {
-    throw new Error(data.error || `Request failed (${response.status})`);
+  const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+
+  function updateCountdowns() {
+    const formatter = absoluteFormat();
+    document.querySelectorAll('.cd[data-ts]').forEach((element) => {
+      const seconds = Number(element.dataset.ts);
+      if (!seconds) return;
+      element.textContent = Catalogue.formatCountdown(seconds, nowMs(), ui.countdown || {}) || uiText('aired');
+      if (!element.title) element.title = capitalize(formatter.format(new Date(seconds * 1000)));
+    });
   }
 
-  return data;
-}
-
-function showActionError(message) {
-  let error = document.getElementById('actionError');
-  if (!error) {
-    error = document.createElement('div');
-    error.id = 'actionError';
-    error.className = 'action-error';
-    error.setAttribute('role', 'alert');
-    document.body.appendChild(error);
+  // One update per minute, aligned to the minute boundary.
+  function scheduleMinuteTick() {
+    const delay = 60000 - (nowMs() % 60000) + 50;
+    setTimeout(() => {
+      updateCountdowns();
+      // An episode that has aired falls behind future ones.
+      if (view.sort === 'next_ep') applySort();
+      renderWeek();
+      scheduleMinuteTick();
+    }, delay);
   }
 
-  error.textContent = message;
-  error.hidden = false;
-  clearTimeout(showActionError.timeoutId);
-  showActionError.timeoutId = setTimeout(() => {
-    error.hidden = true;
-  }, 5000);
-}
+  // ─── Week strip ────────────────────────────────────────────
 
-function setButtonPending(button, pending) {
-  button.disabled = pending;
-  button.setAttribute('aria-busy', pending ? 'true' : 'false');
-}
+  const trackedEntries = () => records().filter((record) => Catalogue.TRACKED.includes(record.status));
 
-function getCurrentLang() {
-  const active = document.querySelector('.lang-toggle button.active');
-  return active ? active.dataset.lang : 'en';
-}
+  function weekEntryElement(entry, timeFormatter) {
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'slot';
+    button.dataset.openId = String(entry.malId);
+    button.dataset.status = entry.status;
 
-function uiText(key, values = {}) {
-  const template = key.split('.').reduce((value, part) => value?.[part], localeCatalog) || key;
-  return Object.entries(values).reduce(
-    (text, [name, value]) => text.replaceAll(`{${name}}`, value),
-    template
-  );
-}
+    if (entry.poster) {
+      const image = document.createElement('img');
+      image.className = 'slot__thumb';
+      image.src = entry.poster;
+      image.alt = '';
+      image.width = 40;
+      image.height = 60;
+      image.loading = 'lazy';
+      button.appendChild(image);
+    } else {
+      const placeholder = document.createElement('span');
+      placeholder.className = 'slot__thumb';
+      button.appendChild(placeholder);
+    }
 
-function formatSeasonLabel(seasonValue) {
-  if (!seasonValue) return '';
-
-  const [season, year] = String(seasonValue).split('_');
-  if (!season || !year) return String(seasonValue);
-
-  return `${localeCatalog.seasons?.[season] || season} ${year}`;
-}
-
-function translateAiringStatus(status) {
-  return localeCatalog.airingStatuses?.[status] || status || '';
-}
-
-function translateRelation(relation) {
-  return localeCatalog.relations?.[String(relation || '').toLowerCase()] || relation || '';
-}
-
-function formatEpisodeCount(count) {
-  const numericCount = Number(count);
-  if (localeCatalog.code !== 'ru') {
-    const noun = numericCount === 1 ? localeCatalog.episodeForms[0] : localeCatalog.episodeForms[1];
-    return `${count} ${noun}`;
-  }
-  const mod10 = numericCount % 10;
-  const mod100 = numericCount % 100;
-  let noun = localeCatalog.episodeForms[2];
-
-  if (mod10 === 1 && mod100 !== 11) noun = localeCatalog.episodeForms[0];
-  else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) noun = localeCatalog.episodeForms[1];
-
-  return `${count} ${noun}`;
-}
-
-function getAnimeDisplayTitle(data) {
-  const currentLang = getCurrentLang();
-
-  if (currentLang === 'jp') {
-    return data.title_jp || data.title_en || data.title_ru || '';
+    const text = document.createElement('span');
+    text.className = 'slot__text';
+    const time = document.createElement('span');
+    time.className = 'slot__time';
+    time.textContent = timeFormatter.format(new Date(entry.nextEpAt * 1000));
+    if (entry.nextEp) {
+      const episode = document.createElement('span');
+      episode.className = 'slot__ep';
+      episode.textContent = uiText('episodeShort', { n: entry.nextEp });
+      time.append(' ', episode);
+    }
+    const title = document.createElement('span');
+    title.className = 'slot__title';
+    title.textContent = entry.title;
+    if (entry.lang) title.lang = entry.lang;
+    text.append(time, title);
+    button.appendChild(text);
+    item.appendChild(button);
+    return item;
   }
 
-  if (currentLang === 'ru') {
-    return data.title_ru || data.title_en || data.title_jp || '';
-  }
+  function renderWeek({ force = false } = {}) {
+    const days = byId('weekDays');
+    const empty = byId('weekEmpty');
+    if (!days || !empty) return;
 
-  return data.title_en || data.title_jp || data.title_ru || '';
-}
+    const tracked = trackedEntries();
+    const zone = timeZone();
+    const week = Catalogue.groupWeek(tracked, { now: nowMs(), timeZone: zone });
+    const signature = JSON.stringify([
+      currentLang(), week[0].key, tracked.length,
+      week.map((day) => day.entries.map((entry) => [entry.malId, entry.nextEpAt, entry.status, entry.title]))
+    ]);
+    if (!force && signature === weekSignature) return;
+    weekSignature = signature;
 
-function getCardByMalId(malId) {
-  return document.querySelector(`.card[data-mal-id="${malId}"]`);
-}
-
-function updateCountdowns() {
-  document.querySelectorAll('.countdown-timer').forEach(el => {
-    const target = parseInt(el.dataset.timestamp, 10) * 1000;
-    if (!target) return;
-    const diff = target - Date.now();
-
-    if (diff <= 0) {
-      el.textContent = uiText('released');
+    const scheduled = week.reduce((count, day) => count + day.entries.length, 0);
+    if (scheduled === 0) {
+      days.hidden = true;
+      days.replaceChildren();
+      empty.hidden = false;
+      empty.textContent = tracked.length ? uiText('weekQuiet') : uiText('weekEmpty');
       return;
     }
 
-    const days = Math.floor(diff / 86400000);
-    const hrs  = Math.floor((diff % 86400000) / 3600000);
-    const mins = Math.floor((diff % 3600000) / 60000);
+    const weekdayFormat = new Intl.DateTimeFormat(ui.intlLocale, { weekday: 'short', timeZone: 'UTC' });
+    const dateFormat = new Intl.DateTimeFormat(ui.intlLocale, { day: 'numeric', timeZone: 'UTC' });
+    const timeFormat = new Intl.DateTimeFormat(ui.intlLocale, { hour: '2-digit', minute: '2-digit', timeZone: zone });
 
-    if (days > 0) {
-      el.textContent = uiText('countdown.days', { days, hours: hrs });
-    } else if (hrs > 0) {
-      el.textContent = uiText('countdown.hours', { hours: hrs, minutes: mins });
-    } else {
-      el.textContent = uiText('countdown.minutes', { minutes: mins });
-    }
-  });
-}
+    const columns = week.map((day) => {
+      const column = document.createElement('li');
+      column.className = 'day';
+      if (day.isToday) column.setAttribute('aria-current', 'date');
+      if (!day.entries.length) column.classList.add('day--quiet');
 
-function setCardStatusClass(card, status) {
-  card.classList.remove('card--following', 'card--watching', 'card--watched');
+      const heading = document.createElement('h3');
+      heading.className = 'day__head';
+      const name = document.createElement('span');
+      name.className = 'day__name';
+      name.textContent = day.isToday ? uiText('today') : capitalize(weekdayFormat.format(day.date).replace('.', ''));
+      const date = document.createElement('span');
+      date.className = 'day__date';
+      date.textContent = dateFormat.format(day.date);
+      heading.append(name, ' ', date);
+      column.appendChild(heading);
 
-  const statusClassMap = {
-    following: 'card--following',
-    watching: 'card--watching',
-    watched: 'card--watched'
-  };
-
-  const className = statusClassMap[status];
-  if (className) {
-    card.classList.add(className);
-  }
-}
-
-function initStatusButtons() {
-  document.querySelectorAll('.card__actions button[data-status]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const card    = btn.closest('.card');
-      const malId   = parseInt(card.dataset.malId, 10);
-      const status  = btn.dataset.status;
-      const isActive = btn.classList.contains('active');
-      const newStatus = isActive ? 'none' : status;
-
-      try {
-        setButtonPending(btn, true);
-        const data = await postJson('/api/mark', { mal_id: malId, status: newStatus });
-
-        if (data.ok) {
-          btn.closest('.card__actions').querySelectorAll('button[data-status]').forEach(b => b.classList.remove('active'));
-          if (newStatus !== 'none') {
-            btn.classList.add('active');
-          }
-          setCardStatusClass(card, newStatus);
-          card.dataset.status     = newStatus !== 'none' ? newStatus : '';
-          updateTabCounts();
-          if (typeof window.applyTabFilter === 'function') {
-            window.applyTabFilter();
-          }
-          syncModalStatus(malId, newStatus);
-        }
-      } catch (err) {
-        console.error('Failed to update status:', err);
-        showActionError(err.message);
-      } finally {
-        setButtonPending(btn, false);
-      }
-    });
-  });
-}
-
-function setJellyfinState(malId, available) {
-  const card = getCardByMalId(malId);
-  if (card) {
-    card.classList.toggle('card--jellyfin', available);
-    const button = card.querySelector('[data-jellyfin]');
-    if (button) button.classList.toggle('active', available);
-  }
-  if (currentModalMalId === malId) {
-    document.querySelector('#modalActions [data-jellyfin]')?.classList.toggle('active', available);
-  }
-  const cached = detailLoader.cache.get(malId);
-  if (cached) cached.in_jellyfin = available;
-}
-
-function initJellyfinButtons() {
-  document.querySelectorAll('[data-jellyfin]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const card = button.closest('.card');
-      const malId = card ? Number(card.dataset.malId) : currentModalMalId;
-      const available = !button.classList.contains('active');
-      try {
-        setButtonPending(button, true);
-        const result = await postJson('/api/jellyfin', { mal_id: malId, available });
-        if (result.ok) setJellyfinState(malId, result.available);
-      } catch (error) {
-        console.error('Failed to update Jellyfin availability:', error);
-        showActionError(error.message);
-      } finally {
-        setButtonPending(button, false);
-      }
-    });
-  });
-}
-
-function syncModalStatus(malId, status) {
-  const cached = detailLoader.cache.get(malId);
-  if (cached) {
-    cached.user_status = status || null;
-  }
-
-  if (currentModalMalId !== malId) return;
-
-  currentModalStatus = status || '';
-  document.querySelectorAll('#modalActions button[data-status]').forEach(btn => {
-    btn.classList.remove('active');
-    if (btn.dataset.status === status) btn.classList.add('active');
-  });
-}
-
-function setModalActionState(status) {
-  document.querySelectorAll('#modalActions button[data-status]').forEach(btn => {
-    btn.classList.remove('active');
-    if (btn.dataset.status === status) btn.classList.add('active');
-  });
-}
-
-function renderSeriesButton(button, target, label) {
-  const labelEl = button.querySelector('.modal__series-label');
-  const titleEl = button.querySelector('.modal__series-title');
-  const metaEl = button.querySelector('.modal__series-meta');
-
-  labelEl.textContent = label;
-
-  if (!target) {
-    button.hidden = true;
-    button.disabled = false;
-    button.dataset.malId = '';
-    titleEl.textContent = '';
-    metaEl.textContent = '';
-    return;
-  }
-
-  button.hidden = false;
-  button.dataset.malId = String(target.mal_id);
-  titleEl.textContent = getAnimeDisplayTitle(target);
-  metaEl.textContent = formatSeasonLabel(target.season) || target.season_label || '';
-}
-
-function renderSeriesNavigation(seriesNav) {
-  const container = document.getElementById('modalSeriesNav');
-  const prevBtn = document.getElementById('modalPrevSeries');
-  const nextBtn = document.getElementById('modalNextSeries');
-
-  renderSeriesButton(prevBtn, seriesNav?.previous || null, `← ${uiText('previousSeries')}`);
-  renderSeriesButton(nextBtn, seriesNav?.next || null, `${uiText('nextSeries')} →`);
-
-  container.hidden = prevBtn.hidden && nextBtn.hidden;
-}
-
-function setSeriesNavigationDisabled(disabled) {
-  document.querySelectorAll('.modal__series-btn').forEach(btn => {
-    if (!btn.hidden) {
-      btn.disabled = disabled;
-    }
-  });
-}
-
-function renderModalData(data, userStatus) {
-  const currentLang = getCurrentLang();
-
-  currentModalMalId = data.mal_id;
-  currentModalStatus = userStatus || '';
-
-  const backdrop = document.getElementById('modalBackdrop');
-  const title    = document.getElementById('modalTitle');
-  const titleJp  = document.getElementById('modalTitleJp');
-  const titleRu  = document.getElementById('modalTitleRu');
-  const poster   = document.getElementById('modalPoster');
-  const synEn    = document.getElementById('modalSynopsisEn');
-  const synRu    = document.getElementById('modalSynopsisRu');
-  const genres   = document.getElementById('modalGenres');
-  const scores   = document.getElementById('modalScores');
-  const related  = document.getElementById('modalRelated');
-  const countdown= document.getElementById('modalCountdown');
-  const statusBadge = document.getElementById('modalStatus');
-  const episodes = document.getElementById('modalEpisodes');
-  const state = document.getElementById('modalState');
-
-  title.textContent = getAnimeDisplayTitle(data);
-  titleJp.textContent = currentLang === 'jp' ? '' : (data.title_jp || '');
-  titleRu.textContent = currentLang === 'ru' ? '' : (data.title_ru || '');
-  poster.src = data.poster_url || '';
-  poster.alt = title.textContent;
-
-  if (currentLang === 'ru') {
-    synRu.hidden = !data.synopsis_ru;
-    synRu.textContent = data.synopsis_ru || '';
-    synEn.hidden = Boolean(data.synopsis_ru) || !data.synopsis_en;
-    synEn.textContent = data.synopsis_ru ? '' : (data.synopsis_en || '');
-  } else {
-    synEn.hidden = !(data.synopsis_en || data.synopsis_ru);
-    synEn.textContent = data.synopsis_en || data.synopsis_ru || '';
-    synRu.hidden = true;
-    synRu.textContent = '';
-  }
-
-  genres.innerHTML = '';
-  (data.genres || []).forEach(g => {
-    const span = document.createElement('span');
-    span.className = 'modal__genre';
-    span.textContent = g;
-    genres.appendChild(span);
-  });
-
-  scores.innerHTML = '';
-  if (data.score_mal) {
-    scores.innerHTML += `
-      <a class="modal__score-item" href="https://myanimelist.net/anime/${data.mal_id}" target="_blank" rel="noopener">
-        <span class="modal__score-label">MAL</span>
-        <span class="modal__score-value modal__score-value--mal">${parseFloat(data.score_mal).toFixed(1)}</span>
-      </a>`;
-  }
-  if (data.score_anilist && data.anilist_id) {
-    scores.innerHTML += `
-      <a class="modal__score-item" href="https://anilist.co/anime/${data.anilist_id}" target="_blank" rel="noopener">
-        <span class="modal__score-label">AniList</span>
-        <span class="modal__score-value modal__score-value--al">${data.score_anilist}</span>
-      </a>`;
-  }
-  if (data.score_shiki) {
-    scores.innerHTML += `
-      <a class="modal__score-item" href="https://shikimori.io/animes/${data.mal_id}" target="_blank" rel="noopener">
-        <span class="modal__score-label">Shikimori</span>
-        <span class="modal__score-value modal__score-value--shiki">${parseFloat(data.score_shiki).toFixed(1)}</span>
-      </a>`;
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-  if (data.next_ep_at && data.next_ep_at > now) {
-    countdown.innerHTML = `<span class="countdown-timer" data-timestamp="${data.next_ep_at}">${uiText('loading')}</span>`;
-    countdown.className = 'card__countdown';
-    episodes.textContent = `${uiText('episode')} ${data.next_ep_num || '?'}/${data.episodes_total || '?'}`;
-    episodes.hidden = false;
-  } else {
-    countdown.innerHTML = '';
-    if (data.airing_status === 'Finished Airing') {
-      countdown.innerHTML = `<span class="card__countdown countdown--released"><span>${uiText('released')}</span></span>`;
-    } else if (data.airing_status === 'Not yet aired') {
-      countdown.innerHTML = `<span class="card__countdown countdown--not-aired"><span>${uiText('notAired')}</span></span>`;
-    } else {
-      countdown.innerHTML = `<span class="card__countdown countdown--tba"><span>${uiText('tba')}</span></span>`;
-    }
-    episodes.textContent = formatEpisodeCount(data.episodes_total || '?');
-    episodes.hidden = false;
-  }
-  statusBadge.textContent = translateAiringStatus(data.airing_status);
-  statusBadge.hidden = !data.airing_status;
-
-  related.innerHTML = '';
-  if (data.related && data.related.length > 0) {
-    const sectionTitle = document.createElement('div');
-    sectionTitle.className = 'modal__section-title';
-    sectionTitle.textContent = uiText('relatedSeries');
-    related.appendChild(sectionTitle);
-    const items = document.createElement('div');
-    related.appendChild(items);
-    window.ModalRendering.renderRelated(items, data.related, translateRelation);
-  }
-
-  renderSeriesNavigation(data.series_nav || null);
-  setModalActionState(currentModalStatus);
-  setJellyfinState(data.mal_id, Boolean(data.in_jellyfin));
-
-  const hasAdditionalDetails = Boolean(
-    data.synopsis_en || data.synopsis_ru || data.genres?.length || data.related?.length
-    || data.score_mal || data.score_anilist || data.score_shiki
-  );
-  state.hidden = hasAdditionalDetails;
-  state.dataset.state = hasAdditionalDetails ? 'success' : 'empty';
-  state.textContent = hasAdditionalDetails ? '' : uiText('noDetails');
-  document.getElementById('animeModal').setAttribute('aria-busy', 'false');
-
-  backdrop.classList.add('open');
-  document.body.classList.add('modal-open');
-  updateCountdowns();
-}
-
-async function fetchAnimeDetails(malId) {
-  const res = await fetch(`/api/anime/${malId}`);
-  if (!res.ok) {
-    throw new Error(`Failed to load anime ${malId}: ${res.status}`);
-  }
-
-  const data = await res.json();
-  return data;
-}
-
-function showModalLoading(malId, status, { preserveNavigation = false } = {}) {
-  currentModalMalId = malId;
-  currentModalStatus = status || '';
-  document.getElementById('modalTitle').textContent = '';
-  document.getElementById('modalTitleJp').textContent = '';
-  document.getElementById('modalTitleRu').textContent = '';
-  document.getElementById('modalPoster').removeAttribute('src');
-  document.getElementById('modalSynopsisEn').textContent = '';
-  document.getElementById('modalSynopsisRu').textContent = '';
-  document.getElementById('modalGenres').replaceChildren();
-  document.getElementById('modalScores').replaceChildren();
-  document.getElementById('modalRelated').replaceChildren();
-  document.getElementById('modalCountdown').replaceChildren();
-  document.getElementById('modalStatus').textContent = '';
-  document.getElementById('modalEpisodes').textContent = '';
-  if (!preserveNavigation) renderSeriesNavigation(null);
-  setModalActionState(currentModalStatus);
-
-  const state = document.getElementById('modalState');
-  state.hidden = false;
-  state.dataset.state = 'loading';
-  state.textContent = uiText('loading');
-  document.getElementById('animeModal').setAttribute('aria-busy', 'true');
-  document.getElementById('modalBackdrop').classList.add('open');
-  document.body.classList.add('modal-open');
-}
-
-async function hydrateModalData(malId, { focusAfterLoad = false } = {}) {
-  const { requestId, promise } = detailLoader.begin(malId);
-  setSeriesNavigationDisabled(true);
-
-  try {
-    const data = await promise;
-    if (!detailLoader.isCurrent(requestId)) return;
-
-    renderModalData(data, data.user_status);
-    if (focusAfterLoad) modalFocusController.focusInitial();
-  } catch (err) {
-    if (detailLoader.isCurrent(requestId)) {
-      console.error('Failed to load anime details:', err);
-      const state = document.getElementById('modalState');
-      state.hidden = false;
-      state.dataset.state = 'error';
-      state.textContent = uiText('loadDetailsFailed');
-      document.getElementById('animeModal').setAttribute('aria-busy', 'false');
-    }
-  } finally {
-    if (detailLoader.isCurrent(requestId)) {
-      setSeriesNavigationDisabled(false);
-    }
-  }
-}
-
-function navigateModalTo(malId) {
-  const card = getCardByMalId(malId);
-  showModalLoading(malId, card?.dataset.status || '', { preserveNavigation: true });
-  hydrateModalData(malId, { focusAfterLoad: true });
-}
-
-function openModal(card, opener) {
-  const malId = parseInt(card.dataset.malId, 10);
-  if (!malId) return;
-  showModalLoading(malId, card.dataset.status || '');
-  modalFocusController.open(opener);
-  hydrateModalData(malId);
-}
-
-function hideModal() {
-  const backdrop = document.getElementById('modalBackdrop');
-  backdrop.classList.remove('open');
-  document.body.classList.remove('modal-open');
-  currentModalMalId = null;
-  currentModalStatus = '';
-  detailLoader.cancel();
-}
-
-function closeModal() {
-  if (modalFocusController) modalFocusController.close();
-  else hideModal();
-}
-
-function initModal() {
-  const backdrop = document.getElementById('modalBackdrop');
-  const modal = document.getElementById('animeModal');
-  const closeBtn = document.getElementById('modalClose');
-  modalFocusController = window.ModalFocus.createModalFocus({ backdrop, modal, onClose: hideModal });
-
-  closeBtn.addEventListener('click', closeModal);
-  backdrop.addEventListener('click', (e) => {
-    if (e.target === backdrop) closeModal();
-  });
-  document.addEventListener('keydown', modalFocusController.handleKeydown);
-
-  document.querySelectorAll('.btn--more').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const card = btn.closest('.card');
-      openModal(card, btn);
-    });
-  });
-
-  document.querySelectorAll('.modal__series-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const targetMalId = parseInt(btn.dataset.malId, 10);
-      if (!targetMalId) return;
-
-      navigateModalTo(targetMalId);
-    });
-  });
-
-  document.getElementById('modalActions').querySelectorAll('button[data-status]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const malId     = currentModalMalId;
-      const status   = btn.dataset.status;
-      const isActive  = btn.classList.contains('active');
-      const newStatus = isActive ? 'none' : status;
-
-      try {
-        setButtonPending(btn, true);
-        const data = await postJson('/api/mark', { mal_id: malId, status: newStatus });
-        if (data.ok) {
-          const card = document.querySelector(`.card[data-mal-id="${malId}"]`);
-          if (card) {
-            card.querySelectorAll('.card__actions button[data-status]').forEach(b => b.classList.remove('active'));
-            if (newStatus !== 'none') {
-              btn.classList.add('active');
-              const cardButton = card.querySelector(`.card__actions button[data-status="${newStatus}"]`);
-              if (cardButton) cardButton.classList.add('active');
-            }
-            setCardStatusClass(card, newStatus);
-            card.dataset.status   = newStatus !== 'none' ? newStatus : '';
-            updateTabCounts();
-            if (typeof window.applyTabFilter === 'function') {
-              window.applyTabFilter();
-            }
-          }
-          syncModalStatus(malId, newStatus);
-        }
-      } catch (err) {
-        console.error('Failed to update status:', err);
-        showActionError(err.message);
-      } finally {
-        setButtonPending(btn, false);
-      }
-    });
-  });
-}
-
-function initTabs() {
-  const applyTabFilter = () => {
-    const activeTab = document.querySelector('.tab.active');
-    if (!activeTab) return;
-
-    const tabType = activeTab.dataset.tab;
-    document.querySelectorAll('.card').forEach(card => {
-      const isCurrentSeason = card.dataset.inCurrentSeason !== 'false';
-
-      if (tabType === 'all') {
-        card.classList.toggle('card--hidden', !isCurrentSeason);
+      if (day.entries.length) {
+        const list = document.createElement('ul');
+        list.className = 'day__slots';
+        day.entries.forEach((entry) => list.appendChild(weekEntryElement(entry, timeFormat)));
+        column.appendChild(list);
       } else {
-        card.classList.toggle('card--hidden', card.dataset.status !== tabType);
+        const none = document.createElement('p');
+        none.className = 'day__none';
+        none.textContent = uiText('noEpisodes');
+        column.appendChild(none);
       }
-    });
-  };
-
-  window.applyTabFilter = applyTabFilter;
-
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      applyTabFilter();
-    });
-  });
-
-  applyTabFilter();
-}
-
-function initSorting() {
-  const sortSelect = document.getElementById('sort-select');
-  if (!sortSelect) return;
-
-  sortSelect.addEventListener('change', () => {
-    const sortBy    = sortSelect.value;
-    const container = document.querySelector('.card-grid');
-    const cards     = Array.from(container.querySelectorAll('.card'));
-
-    cards.sort((a, b) => {
-      if (sortBy === 'title') {
-        const tA = a.querySelector('.card__title').textContent;
-        const tB = b.querySelector('.card__title').textContent;
-        return tA.localeCompare(tB);
-      }
-      if (sortBy === 'next_ep') {
-        return (parseInt(a.dataset.nextEpAt, 10) || 9999999999)
-             - (parseInt(b.dataset.nextEpAt, 10) || 9999999999);
-      }
-      const scoreMap = {
-        popularity:    'popularity',
-        score_mal:     'scoreMal',
-        score_anilist: 'scoreAnilist',
-        score_shiki:   'scoreShiki'
-      };
-      const key = scoreMap[sortBy];
-      const sA  = parseFloat(a.dataset[key]) || 0;
-      const sB  = parseFloat(b.dataset[key]) || 0;
-      return sB - sA;
+      return column;
     });
 
-    cards.forEach(card => container.appendChild(card));
-  });
-}
+    days.replaceChildren(...columns);
+    days.hidden = false;
+    empty.hidden = true;
+  }
 
-function initLanguageToggle() {
-  const setLanguage = async (lang) => {
+  // ─── Status and Jellyfin ───────────────────────────────────
+
+  function setPressed(container, status) {
+    container?.querySelectorAll('[data-set]:not([data-set="jellyfin"])').forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.set === status));
+    });
+  }
+
+  // Enables or disables a title's controls in the grid and, when it is the open
+  // title, in the dialog: a group is disabled while its write is pending, and
+  // the dialog's actions until the title's details have loaded.
+  function syncWriteControls(malId) {
+    const state = writeStateFor(malId);
+    const groups = [itemFor(malId)?.querySelector('.title__acts')];
+    if (currentModalMalId === malId) groups.push(byId('modalActions'));
+    for (const group of groups) {
+      if (!group) continue;
+      const locked = group.id === 'modalActions' && !dialogReady;
+      group.querySelectorAll('[data-set]').forEach((button) => {
+        const pending = state[button.dataset.set === 'jellyfin' ? 'jellyfin' : 'status'].pending;
+        button.disabled = locked || pending;
+        button.setAttribute('aria-busy', String(pending));
+      });
+    }
+  }
+
+  // A title followed from the dialog that has no grid item gets one, rendered
+  // like the server's (out of this season: listed only under its tab).
+  function createItem(data, status) {
+    const tree = TitleItem.titleTree(data, {
+      status, partners: data.partners || [], langPref: currentLang(), ui,
+      inSeason: false, eager: false, nowSeconds: Math.floor(nowMs() / 1000)
+    });
+    const element = TitleItem.toDom(tree, document);
+    catalogueEl().appendChild(element);
+    const record = register(element);
+    updateCountdowns();
+    applySort();
+    return record;
+  }
+
+  function setTitleStatus(malId, status) {
+    let record = titles.get(malId);
+    const cached = detailLoader.cache.get(malId);
+    if (cached) cached.user_status = status || null;
+    if (!record && Catalogue.TRACKED.includes(status) && cached) record = createItem(cached, status);
+    if (record) {
+      record.status = status || '';
+      record.element.dataset.status = record.status;
+      setPressed(record.element.querySelector('.title__acts'), record.status);
+    }
+    if (currentModalMalId === malId && dialogReady) setPressed(byId('modalActions'), status || '');
+    updateTabCounts();
+    applyView();
+    renderWeek();
+  }
+
+  function setTitleJellyfin(malId, available) {
+    const record = titles.get(malId);
+    if (record) {
+      record.jellyfin = available;
+      record.element.toggleAttribute('data-jellyfin', available);
+      record.element.querySelector('[data-set="jellyfin"]')?.setAttribute('aria-pressed', String(available));
+    }
+    if (currentModalMalId === malId && dialogReady) {
+      byId('modalActions').querySelector('[data-set="jellyfin"]').setAttribute('aria-pressed', String(available));
+    }
+    const cached = detailLoader.cache.get(malId);
+    if (cached) cached.in_jellyfin = available;
+  }
+
+  // The request completes before any state changes; pressing the active
+  // status clears it. One write per title and kind at a time: a second click
+  // while one is pending is ignored.
+  async function handleSetButton(button) {
+    const inDialog = Boolean(button.closest('#modalActions'));
+    if (inDialog && !dialogReady) return;
+    const malId = inDialog ? currentModalMalId : Number(button.closest('.title')?.dataset.malId);
+    if (!malId) return;
+    const kind = button.dataset.set === 'jellyfin' ? 'jellyfin' : 'status';
+    const state = writeStateFor(malId)[kind];
+    if (state.pending) return;
+    const pressed = button.getAttribute('aria-pressed') === 'true';
+
+    state.pending = true;
+    syncWriteControls(malId);
     try {
-      const res = await fetch('/api/lang', {
+      if (kind === 'jellyfin') {
+        const result = await postJson('/api/jellyfin', { mal_id: malId, available: !pressed });
+        state.revision++;
+        state.value = result.available;
+        setTitleJellyfin(malId, result.available);
+      } else {
+        const result = await postJson('/api/mark', { mal_id: malId, status: pressed ? 'none' : button.dataset.set });
+        state.revision++;
+        state.value = result.status || '';
+        setTitleStatus(malId, state.value);
+      }
+    } catch (error) {
+      console.error('Failed to update status:', error);
+      showActionError(error.message);
+    } finally {
+      state.pending = false;
+      syncWriteControls(malId);
+    }
+  }
+
+  // ─── Detail dialog ─────────────────────────────────────────
+
+  function clearDialog() {
+    for (const id of ['modalTitle', 'modalTitleJp', 'modalTitleRu', 'modalSynopsisEn', 'modalSynopsisRu',
+      'modalCountdown', 'modalStatus', 'modalEpisodes']) {
+      byId(id).textContent = '';
+    }
+    byId('modalPoster').removeAttribute('src');
+    for (const id of ['modalGenres', 'modalScores', 'modalRelated', 'modalPartners']) byId(id).replaceChildren();
+    byId('modalPartners').hidden = true;
+  }
+
+  function setDialogState(state, text) {
+    const element = byId('modalState');
+    element.dataset.state = state;
+    element.textContent = text || '';
+    element.hidden = !text;
+    dialog().setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
+  }
+
+  function renderSeriesButton(button, target, label) {
+    button.querySelector('.detail__series-label').textContent = label;
+    if (!target) {
+      button.hidden = true;
+      delete button.dataset.openId;
+      button.querySelector('.detail__series-title').textContent = '';
+      button.querySelector('.detail__series-meta').textContent = '';
+      return;
+    }
+    button.hidden = false;
+    button.dataset.openId = String(target.mal_id);
+    button.querySelector('.detail__series-title').textContent = displayTitle(target);
+    const [season, year] = String(target.season || '').split('_');
+    button.querySelector('.detail__series-meta').textContent =
+      season && year ? `${ui.seasons?.[season] || season} ${year}` : (target.season_label || '');
+  }
+
+  function renderSeriesNavigation(seriesNav) {
+    const previous = byId('modalPrevSeries');
+    const next = byId('modalNextSeries');
+    renderSeriesButton(previous, seriesNav?.previous || null, uiText('previousSeries'));
+    renderSeriesButton(next, seriesNav?.next || null, uiText('nextSeries'));
+    byId('modalSeriesNav').hidden = previous.hidden && next.hidden;
+  }
+
+  function scoreLink(label, value, href) {
+    const link = document.createElement('a');
+    link.className = 'score-link';
+    link.href = href;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    const name = document.createElement('span');
+    name.textContent = label;
+    const number = document.createElement('b');
+    number.textContent = value;
+    link.append(name, ' ', number);
+    return link;
+  }
+
+  function renderDetail(data) {
+    const lang = currentLang();
+    currentModalMalId = data.mal_id;
+
+    const title = displayTitle(data);
+    byId('modalTitle').textContent = title;
+    if (titleLang(data)) byId('modalTitle').lang = 'ja';
+    else byId('modalTitle').removeAttribute('lang');
+    byId('modalTitleJp').textContent = lang === 'jp' || data.title_jp === title ? '' : (data.title_jp || '');
+    byId('modalTitleRu').textContent = lang === 'ru' || data.title_ru === title ? '' : (data.title_ru || '');
+    const poster = byId('modalPoster');
+    if (data.poster_url) poster.src = data.poster_url;
+    else poster.removeAttribute('src');
+
+    const synopsisEn = byId('modalSynopsisEn');
+    const synopsisRu = byId('modalSynopsisRu');
+    const preferRu = lang === 'ru' && data.synopsis_ru;
+    synopsisRu.textContent = preferRu ? data.synopsis_ru : '';
+    synopsisRu.hidden = !preferRu;
+    synopsisEn.textContent = preferRu ? '' : (data.synopsis_en || data.synopsis_ru || '');
+    synopsisEn.hidden = !synopsisEn.textContent;
+
+    const genres = byId('modalGenres');
+    genres.replaceChildren(...(data.genres || []).map((genre) => {
+      const item = document.createElement('li');
+      item.textContent = genre;
+      return item;
+    }));
+    genres.hidden = !genres.children.length;
+
+    const scores = byId('modalScores');
+    const links = [];
+    if (data.score_mal) links.push(scoreLink('MAL', Number(data.score_mal).toFixed(1), `https://myanimelist.net/anime/${Number(data.mal_id)}`));
+    if (data.score_anilist && data.anilist_id) links.push(scoreLink('AniList', String(data.score_anilist), `https://anilist.co/anime/${Number(data.anilist_id)}`));
+    if (data.score_shiki) links.push(scoreLink('Shikimori', Number(data.score_shiki).toFixed(1), `https://shikimori.io/animes/${Number(data.mal_id)}`));
+    scores.replaceChildren(...links);
+    scores.hidden = !links.length;
+
+    const countdown = byId('modalCountdown');
+    const episodes = byId('modalEpisodes');
+    countdown.replaceChildren();
+    if (data.next_ep_at && data.next_ep_at * 1000 > nowMs()) {
+      const timer = document.createElement('span');
+      timer.className = 'cd';
+      timer.dataset.ts = String(data.next_ep_at);
+      const when = document.createElement('span');
+      when.className = 'detail__date';
+      when.textContent = capitalize(absoluteFormat().format(new Date(data.next_ep_at * 1000)));
+      countdown.append(when, ' ', timer);
+      episodes.textContent = uiText('episodeProgress', { n: data.next_ep_num || '?', total: data.episodes_total || '?' });
+    } else {
+      countdown.textContent = data.airing_status === 'Finished Airing' ? uiText('finished')
+        : data.airing_status === 'Not yet aired' ? uiText('notAired') : uiText('tba');
+      episodes.textContent = data.episodes_total ? formatEpisodeCount(data.episodes_total) : '';
+    }
+    byId('modalStatus').textContent = ui.airingStatuses?.[data.airing_status] || data.airing_status || '';
+
+    const partners = byId('modalPartners');
+    partners.replaceChildren(...(data.partners || []).map((partner) => {
+      const chip = document.createElement('span');
+      chip.className = 'chip chip--labelled';
+      chip.dataset.status = partner.status;
+      const initial = document.createElement('span');
+      initial.className = 'chip__initial';
+      initial.setAttribute('aria-hidden', 'true');
+      initial.textContent = String(partner.username || '?').charAt(0).toUpperCase();
+      const text = document.createElement('span');
+      text.textContent = uiText('partnerStatus', { name: partner.username, status: ui.partnerStates?.[partner.status] || partner.status });
+      chip.append(initial, text);
+      return chip;
+    }));
+    partners.hidden = !partners.children.length;
+
+    const related = byId('modalRelated');
+    related.replaceChildren();
+    if (data.related?.some((relation) => relation?.entries?.length)) {
+      const heading = document.createElement('h3');
+      heading.className = 'detail__section';
+      heading.textContent = uiText('relatedSeries');
+      const list = document.createElement('ul');
+      list.className = 'related';
+      ModalRendering.renderRelated(list, data.related, translateRelation, document, displayTitle);
+      related.append(heading, list);
+    }
+
+    renderSeriesNavigation(data.series_nav || null);
+    dialogReady = true;
+    setPressed(byId('modalActions'), data.user_status || '');
+    byId('modalActions').querySelector('[data-set="jellyfin"]').setAttribute('aria-pressed', String(Boolean(data.in_jellyfin)));
+    syncWriteControls(data.mal_id);
+
+    const hasDetails = Boolean(data.synopsis_en || data.synopsis_ru || data.genres?.length || data.related?.length
+      || data.score_mal || data.score_anilist || data.score_shiki);
+    setDialogState(hasDetails ? 'success' : 'empty', hasDetails ? '' : uiText('noDetails'));
+    updateCountdowns();
+  }
+
+  function translateRelation(relation) {
+    return ui.relations?.[String(relation || '').toLowerCase()] || relation || '';
+  }
+
+  const formatEpisodeCount = (count) => Catalogue.formatEpisodeCount(count, ui);
+
+  // Nothing of the previous title's actions survives: every action is reset
+  // and disabled until this title's details arrive (and stays so on failure).
+  function showLoading(malId, { keepNavigation = false } = {}) {
+    currentModalMalId = malId;
+    dialogReady = false;
+    clearDialog();
+    if (!keepNavigation) renderSeriesNavigation(null);
+    byId('modalActions').querySelectorAll('[data-set]').forEach((button) => button.setAttribute('aria-pressed', 'false'));
+    syncWriteControls(malId);
+    setDialogState('loading', uiText('loading'));
+  }
+
+  // A detail payload is authoritative except for values written after its
+  // request started; those keep the newer value (in the payload and the cache).
+  function reconcile(data, startRevisions) {
+    const state = writeStateFor(data.mal_id);
+    if (state.status.revision !== startRevisions.status) data.user_status = state.status.value || null;
+    if (state.jellyfin.revision !== startRevisions.jellyfin) data.in_jellyfin = state.jellyfin.value;
+    setTitleJellyfin(data.mal_id, Boolean(data.in_jellyfin));
+    if ((titles.get(data.mal_id)?.status || '') !== (data.user_status || '')) setTitleStatus(data.mal_id, data.user_status || '');
+  }
+
+  async function loadDetail(malId, { focusTitle = false } = {}) {
+    const state = writeStateFor(malId);
+    const startRevisions = { status: state.status.revision, jellyfin: state.jellyfin.revision };
+    const { requestId, promise } = detailLoader.begin(malId);
+    const navButtons = [...document.querySelectorAll('.detail__series-btn:not([hidden])')];
+    navButtons.forEach((button) => { button.disabled = true; });
+    try {
+      const data = await promise;
+      if (!detailLoader.isCurrent(requestId)) return;
+      reconcile(data, startRevisions);
+      renderDetail(data);
+      if (focusTitle) byId('modalTitle').focus();
+    } catch (error) {
+      if (!detailLoader.isCurrent(requestId)) return;
+      console.error('Failed to load anime details:', error);
+      setDialogState('error', uiText('loadDetailsFailed'));
+      syncWriteControls(malId);
+    } finally {
+      if (detailLoader.isCurrent(requestId)) navButtons.forEach((button) => { button.disabled = false; });
+    }
+  }
+
+  function openDetail(malId, opener) {
+    if (!malId) return;
+    const element = dialog();
+    if (element.open) {
+      showLoading(malId, { keepNavigation: true });
+      loadDetail(malId, { focusTitle: true });
+      return;
+    }
+    dialogOpener = opener || document.activeElement;
+    dialogOpenerMalId = malId;
+    showLoading(malId);
+    element.showModal();
+    loadDetail(malId);
+  }
+
+  const focusable = (element) => Boolean(element?.isConnected && !element.closest('[hidden]') && !element.disabled);
+
+  // Esc, the close button and a backdrop click all end in the native close
+  // event. Focus returns to the opener if it is still on the page and visible;
+  // otherwise to the same title's button in the grid; otherwise the active tab.
+  function onDialogClose() {
+    currentModalMalId = null;
+    dialogReady = false;
+    detailLoader.cancel();
+    const candidates = [
+      dialogOpener,
+      itemFor(dialogOpenerMalId)?.querySelector('.title__open'),
+      document.querySelector('.tab[aria-pressed="true"]')
+    ];
+    dialogOpener = null;
+    dialogOpenerMalId = null;
+    candidates.find(focusable)?.focus();
+  }
+
+  // ─── Language ──────────────────────────────────────────────
+
+  async function setLanguage(lang) {
+    try {
+      const response = await fetch('/api/lang', {
         method: 'POST',
-        headers: jsonHeaders(),
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
         body: JSON.stringify({ lang })
       });
-      if (res.ok) window.location.reload();
-    } catch (err) {
-      console.error('Failed to change language:', err);
+      if (response.ok) window.location.reload();
+    } catch (error) {
+      console.error('Failed to change language:', error);
     }
-  };
+  }
 
-  document.querySelectorAll('.lang-toggle button').forEach(btn => {
-    btn.addEventListener('click', () => setLanguage(btn.dataset.lang));
-  });
+  // ─── Events ────────────────────────────────────────────────
 
-  document.querySelectorAll('.language-select').forEach(select => {
-    select.addEventListener('change', () => setLanguage(select.value));
-  });
-}
+  function onClick(event) {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
 
-function initSeasonSelect() {
-  document.querySelectorAll('.season-select').forEach(select => {
-    select.addEventListener('change', () => window.location.assign(select.value));
-  });
-}
+    const element = dialog();
+    if (target === element) { element.close(); return; }
+    if (target.closest('#modalClose')) { element.close(); return; }
 
-function updateTabCounts() {
-  ['following', 'watching'].forEach(status => {
-    const tab = document.querySelector(`.tab[data-tab="${status}"]`);
-    if (!tab) return;
-    const count = document.querySelectorAll(`.card[data-status="${status}"]`).length;
-    tab.textContent = `${uiText(status)} (${count})`;
-  });
-}
+    const setButton = target.closest('button[data-set]');
+    if (setButton) { handleSetButton(setButton); return; }
 
-document.addEventListener('DOMContentLoaded', () => {
-  updateCountdowns();
-  setInterval(updateCountdowns, 1000);
+    const openButton = target.closest('[data-open-id]');
+    if (openButton) { openDetail(Number(openButton.dataset.openId), openButton); return; }
 
-  initStatusButtons();
-  initJellyfinButtons();
-  initModal();
-  initTabs();
-  initSorting();
-  initLanguageToggle();
-  initSeasonSelect();
-});
+    const title = target.closest('.title');
+    if (title && (target.closest('.title__open') || target.closest('.title__poster'))) {
+      openDetail(Number(title.dataset.malId), title.querySelector('.title__open'));
+      return;
+    }
+
+    const tab = target.closest('.tab');
+    if (tab) {
+      view.tab = tab.dataset.tab;
+      syncControls();
+      savePreferences();
+      applyView();
+      return;
+    }
+
+    const lang = target.closest('.lang-toggle [data-lang]');
+    if (lang && lang.getAttribute('aria-pressed') !== 'true') setLanguage(lang.dataset.lang);
+  }
+
+  function onChange(event) {
+    const { id } = event.target;
+    if (id === 'format-filter') view.format = event.target.value;
+    else if (id === 'hide-watched') view.hideWatched = event.target.checked;
+    else if (id === 'sort-select') { view.sort = event.target.value; applySort(); }
+    else return;
+    savePreferences();
+    applyView();
+  }
+
+  function onInput(event) {
+    if (event.target.id !== 'title-search') return;
+    view.query = event.target.value;
+    applyView();
+  }
+
+  // A poster that fails to load becomes the neutral placeholder.
+  function onImageError(event) {
+    const image = event.target;
+    if (!(image instanceof HTMLImageElement) || !image.matches('.title__poster, .slot__thumb')) return;
+    const placeholder = document.createElement('span');
+    placeholder.className = image.className;
+    image.replaceWith(placeholder);
+    const record = titles.get(Number(placeholder.closest('.title')?.dataset.malId));
+    if (record && image.classList.contains('title__poster')) record.poster = '';
+  }
+
+  function init() {
+    catalogueEl()?.querySelectorAll(':scope > .title').forEach(register);
+    loadPreferences();
+    syncControls();
+    if (view.sort !== 'popularity') applySort();
+    applyView();
+    updateCountdowns();
+    renderWeek({ force: true });
+    scheduleMinuteTick();
+
+    document.addEventListener('click', onClick);
+    document.addEventListener('change', onChange);
+    document.addEventListener('input', onInput);
+    document.addEventListener('error', onImageError, true);
+    dialog()?.addEventListener('close', onDialogClose);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();

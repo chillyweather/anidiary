@@ -57,7 +57,7 @@ router.post('/login', csrfProtection, authLimiter, async (req, res) => {
     const password = String(req.body.password || '');
 
     if (!username || !password) {
-      return res.render('login', { error: 'Username and password are required' });
+      return res.render('login', { error: 'Enter both a username and a password.' });
     }
 
     const user = getUserByUsername(username);
@@ -68,20 +68,20 @@ router.post('/login', csrfProtection, authLimiter, async (req, res) => {
     const match = await bcrypt.compare(password, hashToCompare);
 
     if (!user || !match) {
-      return res.render('login', { error: 'Invalid username or password' });
+      return res.render('login', { error: 'That username and password do not match an account.' });
     }
 
     await setAuthenticatedSession(req, user);
     return res.redirect('/');
   } catch (err) {
     console.error('Login error:', err);
-    return res.status(500).render('login', { error: 'Unable to login right now' });
+    return res.status(500).render('login', { error: 'Logging in failed because of a server error. Try again in a minute.' });
   }
 });
 
 router.get('/register', (req, res) => {
   if (!registrationOpen) {
-    return res.status(404).render('error', { error: 'Registration is closed' });
+    return res.status(404).render('error', { error: 'New accounts cannot be created on this server.' });
   }
   if (req.session && req.session.userId) {
     return res.redirect('/');
@@ -93,21 +93,21 @@ router.get('/register', (req, res) => {
 router.post('/register', csrfProtection, authLimiter, async (req, res) => {
   try {
     if (!registrationOpen) {
-      return res.status(403).render('error', { error: 'Registration is closed' });
+      return res.status(403).render('error', { error: 'New accounts cannot be created on this server.' });
     }
     const username = normalizeUsername(req.body.username);
     const password = String(req.body.password || '');
 
     if (!username || !password) {
-      return res.render('register', { error: 'Username and password are required' });
+      return res.render('register', { error: 'Enter both a username and a password.' });
     }
 
     if (username.length < 3 || username.length > 20) {
-      return res.render('register', { error: 'Username must be 3-20 characters' });
+      return res.render('register', { error: 'Usernames are 3 to 20 characters long.' });
     }
 
     if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      return res.render('register', { error: 'Username can only contain letters, numbers, and underscores' });
+      return res.render('register', { error: 'Usernames may use only letters, numbers and underscores.' });
     }
 
     const passwordError = validatePassword(password);
@@ -124,7 +124,7 @@ router.post('/register', csrfProtection, authLimiter, async (req, res) => {
     return res.redirect('/');
   } catch (err) {
     console.error('Register error:', err);
-    return res.status(500).render('register', { error: 'Unable to register right now' });
+    return res.status(500).render('register', { error: 'Creating the account failed because of a server error. Try again in a minute.' });
   }
 });
 

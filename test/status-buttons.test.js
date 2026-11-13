@@ -1,229 +1,263 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const { JSDOM } = require('jsdom');
 
-const root = path.join(__dirname, '..');
+const { anime, createSeasonDom, closeWindows, click, settle, localNoon } = require('./helpers/season-dom');
 
-function loadScript(window, file) {
-  window.eval(fs.readFileSync(path.join(root, file), 'utf8'));
+test.afterEach(closeWindows);
+
+const HOUR = 3600;
+
+function fixture(now) {
+  const seconds = Math.floor(now / 1000);
+  return {
+    now,
+    animeList: [
+      anime(1, { next_ep_at: seconds + HOUR, next_ep_num: 5, popularity: 300 }),
+      anime(2, { next_ep_at: seconds + 30 * HOUR, next_ep_num: 2, popularity: 200, format: 'movie' }),
+      anime(3, { airing_status: 'Finished Airing', popularity: 100, format: 'ova', title_en: 'Quiet Ending' })
+    ]
+  };
 }
 
-// Closing each window clears its timers (the 5 s action-error timeout), which
-// otherwise keep the test process alive after the last test.
-const openWindows = [];
-test.afterEach(() => {
-  while (openWindows.length) openWindows.pop().close();
-});
+const pressed = (button) => button.getAttribute('aria-pressed');
+const weekTitles = (document) => [...document.querySelectorAll('#weekDays .slot__title')].map((el) => el.textContent);
+const tabCount = (document, tab) => document.querySelector(`.tab[data-tab="${tab}"] .tab__count`).textContent;
 
-function createDom({ fetchHandler } = {}) {
-  const dom = new JSDOM(`<!DOCTYPE html>
-    <html>
-      <head><meta name="csrf-token" content="csrf-token"></head>
-      <body>
-        <script id="localeCatalog" type="application/json">
-          {"code":"en","following":"Following","watching":"Watching","loading":"Loading","released":"Released","episode":"Episode","episodeForms":["episode","episodes"],"countdown":{"days":"{days}d {hours}h","hours":"{hours}h {minutes}m","minutes":"{minutes}m"}}
-        </script>
-        <button class="tab active" data-tab="all">All</button>
-        <button class="tab" data-tab="following">Following (0)</button>
-        <button class="tab" data-tab="watching">Watching (0)</button>
-        <div class="card-grid">
-          <div class="card" data-mal-id="1" data-in-current-season="true" data-status="">
-            <button class="btn btn--more" data-moreless="more">More</button>
-            <div class="card__actions">
-              <button class="btn btn--follow" data-status="following">Follow</button>
-              <button class="btn btn--watching" data-status="watching">Watching</button>
-              <button class="btn btn--jellyfin" data-jellyfin="true">Jellyfin</button>
-              <button class="btn btn--watched" data-status="watched">Watched</button>
-            </div>
-          </div>
-        </div>
-        <div class="modal-backdrop" id="modalBackdrop">
-          <div class="modal" id="animeModal" tabindex="-1">
-            <button id="modalClose"></button>
-            <div id="modalTitle"></div>
-            <div id="modalTitleJp"></div>
-            <div id="modalTitleRu"></div>
-            <img id="modalPoster">
-            <div id="modalSynopsisEn"></div>
-            <div id="modalSynopsisRu"></div>
-            <div id="modalGenres"></div>
-            <div id="modalScores"></div>
-            <div id="modalRelated"></div>
-            <div id="modalCountdown"></div>
-            <div id="modalStatus"></div>
-            <div id="modalEpisodes"></div>
-            <div id="modalState"></div>
-            <div id="modalSeriesNav" hidden>
-              <button class="modal__series-btn" id="modalPrevSeries" hidden><span class="modal__series-label"></span><span class="modal__series-title"></span><span class="modal__series-meta"></span></button>
-              <button class="modal__series-btn" id="modalNextSeries" hidden><span class="modal__series-label"></span><span class="modal__series-title"></span><span class="modal__series-meta"></span></button>
-            </div>
-            <div id="modalActions">
-              <button class="btn btn--follow" data-status="following">Follow</button>
-              <button class="btn btn--watching" data-status="watching">Watching</button>
-              <button class="btn btn--jellyfin" data-jellyfin="true">Jellyfin</button>
-              <button class="btn btn--watched" data-status="watched">Watched</button>
-            </div>
-          </div>
-        </div>
-        <select id="sort-select"></select>
-      </body>
-    </html>`, {
-    url: 'http://localhost/season/2026/spring',
-    runScripts: 'outside-only',
-    pretendToBeVisual: true
-  });
+test('item status buttons update the marker, pressed state, counts and the week strip', async () => {
+  const { document, fetchCalls, now } = await createSeasonDom(fixture(localNoon()));
+  const item = document.querySelector('.title[data-mal-id="1"]');
+  const follow = item.querySelector('[data-set="following"]');
+  const watched = item.querySelector('[data-set="watched"]');
 
-  const fetchCalls = [];
-  dom.window.setInterval = () => 0;
-  dom.window.console.error = () => {};
-  dom.window.fetch = fetchHandler || (async (url, options = {}) => {
-    fetchCalls.push({ url, options, body: JSON.parse(options.body || '{}') });
-    if (url === '/api/anime/1') {
-      return {
-        ok: true,
-        json: async () => ({
-          mal_id: 1,
-          title_en: 'Test anime',
-          title_jp: '',
-          title_ru: '',
-          synopsis_en: '',
-          synopsis_ru: '',
-          poster_url: '',
-          genres: [],
-          related: [],
-          in_jellyfin: false,
-          user_status: null,
-          series_nav: null
-        })
-      };
-    }
-    if (url === '/api/mark') {
-      return { ok: true, json: async () => ({ ok: true, status: fetchCalls.at(-1).body.status }) };
-    }
-    if (url === '/api/jellyfin') {
-      return { ok: true, json: async () => ({ ok: true, available: fetchCalls.at(-1).body.available }) };
-    }
-    throw new Error(`Unexpected fetch: ${url}`);
-  });
+  assert.equal(document.getElementById('weekDays').hidden, true);
+  assert.match(document.getElementById('weekEmpty').textContent, /^Follow a title/);
 
-  loadScript(dom.window, 'public/js/detail-loader.js');
-  loadScript(dom.window, 'public/js/modal-rendering.js');
-  loadScript(dom.window, 'public/js/modal-focus.js');
-  loadScript(dom.window, 'public/js/app.js');
-  dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded', { bubbles: true }));
-
-  openWindows.push(dom.window);
-  return { window: dom.window, document: dom.window.document, fetchCalls };
-}
-
-async function click(button) {
-  button.dispatchEvent(new button.ownerDocument.defaultView.MouseEvent('click', { bubbles: true }));
-  await Promise.resolve();
-  await Promise.resolve();
-  await new Promise((resolve) => setImmediate(resolve));
-}
-
-test('card status buttons send requests and update visible state', async () => {
-  const { document, fetchCalls } = createDom();
-  const card = document.querySelector('.card');
-
-  await click(document.querySelector('.card__actions [data-status="following"]'));
+  await click(follow);
   assert.deepEqual(fetchCalls.at(-1).body, { mal_id: 1, status: 'following' });
   assert.equal(fetchCalls.at(-1).options.headers['X-CSRF-Token'], 'csrf-token');
-  assert.equal(card.dataset.status, 'following');
-  assert.equal(card.classList.contains('card--following'), true);
-  assert.equal(document.querySelector('.card__actions [data-status="following"]').classList.contains('active'), true);
+  assert.equal(item.dataset.status, 'following');
+  assert.equal(pressed(follow), 'true');
+  assert.equal(tabCount(document, 'following'), '1');
+  assert.equal(document.getElementById('weekDays').hidden, false);
+  assert.equal(document.getElementById('weekEmpty').hidden, true);
+  assert.deepEqual(weekTitles(document), ['Title 1']);
+  const today = document.querySelector('#weekDays .day[aria-current="date"]');
+  assert.equal(today.querySelector('.day__name').textContent, 'Today');
+  assert.equal(today.querySelector('.slot').dataset.openId, '1');
+  assert.equal(document.querySelectorAll('#weekDays .day').length, 7);
+  assert.ok(now);
 
-  await click(document.querySelector('.card__actions [data-jellyfin]'));
-  assert.deepEqual(fetchCalls.at(-1).body, { mal_id: 1, available: true });
-  assert.equal(card.classList.contains('card--jellyfin'), true);
-  assert.equal(document.querySelector('.card__actions [data-jellyfin]').classList.contains('active'), true);
+  await click(document.querySelector('.title[data-mal-id="2"] [data-set="watching"]'));
+  assert.deepEqual(weekTitles(document), ['Title 1', 'Title 2']);
+  assert.equal(tabCount(document, 'watching'), '1');
 
-  await click(document.querySelector('.card__actions [data-status="watched"]'));
+  await click(watched);
   assert.deepEqual(fetchCalls.at(-1).body, { mal_id: 1, status: 'watched' });
-  assert.equal(card.dataset.status, 'watched');
-  assert.equal(card.classList.contains('card--following'), false);
-  assert.equal(card.classList.contains('card--watched'), true);
-  assert.equal(document.querySelector('.card__actions [data-status="following"]').classList.contains('active'), false);
-  assert.equal(document.querySelector('.card__actions [data-status="watched"]').classList.contains('active'), true);
+  assert.equal(item.dataset.status, 'watched');
+  assert.equal(pressed(follow), 'false');
+  assert.equal(pressed(watched), 'true');
+  assert.equal(tabCount(document, 'following'), '0');
+  assert.deepEqual(weekTitles(document), ['Title 2']);
+
+  // Pressing the active state clears it.
+  await click(watched);
+  assert.deepEqual(fetchCalls.at(-1).body, { mal_id: 1, status: 'none' });
+  assert.equal(item.dataset.status, '');
+  assert.equal(pressed(watched), 'false');
+
+  const jellyfin = item.querySelector('[data-set="jellyfin"]');
+  await click(jellyfin);
+  assert.deepEqual(fetchCalls.at(-1).body, { mal_id: 1, available: true });
+  assert.equal(item.hasAttribute('data-jellyfin'), true);
+  assert.equal(pressed(jellyfin), 'true');
+  assert.equal(item.dataset.status, '', 'Jellyfin availability is independent of personal state');
 });
 
-test('modal status buttons send requests and sync card state', async () => {
-  const { document, fetchCalls } = createDom();
-  const card = document.querySelector('.card');
-
-  await click(document.querySelector('.btn--more'));
-  await Promise.resolve();
-
-  await click(document.querySelector('#modalActions [data-status="following"]'));
-  assert.deepEqual(fetchCalls.at(-1).body, { mal_id: 1, status: 'following' });
-  assert.equal(card.dataset.status, 'following');
-  assert.equal(document.querySelector('#modalActions [data-status="following"]').classList.contains('active'), true);
-  assert.equal(document.querySelector('.card__actions [data-status="following"]').classList.contains('active'), true);
-
-  await click(document.querySelector('#modalActions [data-jellyfin]'));
-  assert.deepEqual(fetchCalls.at(-1).body, { mal_id: 1, available: true });
-  assert.equal(card.classList.contains('card--jellyfin'), true);
-  assert.equal(document.querySelector('#modalActions [data-jellyfin]').classList.contains('active'), true);
-
-  await click(document.querySelector('#modalActions [data-status="watched"]'));
-  assert.deepEqual(fetchCalls.at(-1).body, { mal_id: 1, status: 'watched' });
-  assert.equal(card.dataset.status, 'watched');
-  assert.equal(document.querySelector('#modalActions [data-status="following"]').classList.contains('active'), false);
-  assert.equal(document.querySelector('#modalActions [data-status="watched"]').classList.contains('active'), true);
-  assert.equal(document.querySelector('.card__actions [data-status="following"]').classList.contains('active'), false);
-  assert.equal(document.querySelector('.card__actions [data-status="watched"]').classList.contains('active'), true);
-});
-
-test('failed status updates show a visible action error', async () => {
-  const fetchCalls = [];
-  const { document } = createDom({
-    fetchHandler: async (url, options = {}) => {
-      fetchCalls.push({ url, options, body: JSON.parse(options.body || '{}') });
-      return {
-        ok: false,
-        status: 403,
-        json: async () => ({ error: 'Invalid CSRF token' })
-      };
-    }
+test('with tracked titles but nothing airing this week the strip says so', async () => {
+  const now = localNoon();
+  const { document } = await createSeasonDom({
+    now,
+    animeList: [anime(1, { next_ep_at: Math.floor(now / 1000) + 9 * 24 * HOUR })],
+    statuses: { 1: 'following' }
   });
+  assert.equal(document.getElementById('weekDays').hidden, true);
+  assert.equal(document.getElementById('weekEmpty').textContent, 'None of your titles air in the next seven days.');
+});
 
-  await click(document.querySelector('.card__actions [data-status="following"]'));
+test('tracked titles from other seasons appear in the week strip', async () => {
+  const now = localNoon();
+  const { document } = await createSeasonDom({
+    now,
+    animeList: [anime(1)],
+    tracked: [anime(50, { season: 'summer_2026', next_ep_at: Math.floor(now / 1000) + 2 * HOUR, title_en: 'Carry-over' })],
+    statuses: { 50: 'watching' }
+  });
+  assert.deepEqual(weekTitles(document), ['Carry-over']);
+  assert.equal(document.querySelector('.title[data-mal-id="50"]').hidden, true, 'not listed under All');
+});
+
+test('a failed status update shows the error and changes nothing', async () => {
+  const { document } = await createSeasonDom({
+    ...fixture(localNoon()),
+    fetchHandler: async () => ({ ok: false, status: 403, json: async () => ({ error: 'Invalid CSRF token' }) })
+  });
+  const item = document.querySelector('.title[data-mal-id="1"]');
+  const follow = item.querySelector('[data-set="following"]');
+  await click(follow);
 
   const error = document.getElementById('actionError');
-  assert.deepEqual(fetchCalls.at(-1).body, { mal_id: 1, status: 'following' });
   assert.equal(error.hidden, false);
   assert.equal(error.textContent, 'Invalid CSRF token');
-  assert.equal(document.querySelector('.card').dataset.status, '');
+  assert.equal(item.dataset.status, '');
+  assert.equal(pressed(follow), 'false');
+  assert.equal(follow.disabled, false);
+  assert.equal(follow.getAttribute('aria-busy'), 'false');
 });
 
-test('following and watching tabs only list cards in that exact status', async () => {
-  const { document } = createDom();
-  const card = document.querySelector('.card');
+test('buttons stay pending until the request completes', async () => {
+  let release;
+  const { document } = await createSeasonDom({
+    ...fixture(localNoon()),
+    fetchHandler: () => new Promise((resolve) => {
+      release = () => resolve({ ok: true, json: async () => ({ ok: true, status: 'following' }) });
+    })
+  });
+  const item = document.querySelector('.title[data-mal-id="1"]');
+  const follow = item.querySelector('[data-set="following"]');
+  await click(follow);
+  assert.equal(follow.disabled, true);
+  assert.equal(follow.getAttribute('aria-busy'), 'true');
+  assert.equal(item.dataset.status, '', 'state changes only after the response');
+  release();
+  await settle();
+  assert.equal(item.dataset.status, 'following');
+  assert.equal(follow.disabled, false);
+});
+
+test('Following and Watching tabs list only titles in that exact state', async () => {
+  const { document } = await createSeasonDom(fixture(localNoon()));
+  const item = document.querySelector('.title[data-mal-id="1"]');
   const followingTab = document.querySelector('.tab[data-tab="following"]');
   const watchingTab = document.querySelector('.tab[data-tab="watching"]');
 
-  await click(document.querySelector('.card__actions [data-status="following"]'));
+  await click(item.querySelector('[data-set="following"]'));
   await click(followingTab);
-  assert.equal(followingTab.textContent, 'Following (1)');
-  assert.equal(card.classList.contains('card--hidden'), false);
+  assert.equal(pressed(followingTab), 'true');
+  assert.equal(item.hidden, false);
+  assert.equal(document.querySelector('.title[data-mal-id="2"]').hidden, true);
 
-  await click(document.querySelector('.card__actions [data-status="watching"]'));
-  assert.equal(card.dataset.status, 'watching');
-  assert.equal(card.classList.contains('card--watching'), true);
-  assert.equal(card.classList.contains('card--following'), false);
-  assert.equal(followingTab.textContent, 'Following (0)');
-  assert.equal(watchingTab.textContent, 'Watching (1)');
-  assert.equal(card.classList.contains('card--hidden'), true);
+  await click(item.querySelector('[data-set="watching"]'));
+  assert.equal(tabCount(document, 'following'), '0');
+  assert.equal(tabCount(document, 'watching'), '1');
+  assert.equal(item.hidden, true);
+  assert.equal(document.getElementById('noMatch').hidden, false);
 
   await click(watchingTab);
-  assert.equal(card.classList.contains('card--hidden'), false);
+  assert.equal(item.hidden, false);
+  assert.equal(document.getElementById('noMatch').hidden, true);
 
-  await click(document.querySelector('.card__actions [data-status="watched"]'));
-  assert.equal(watchingTab.textContent, 'Watching (0)');
-  assert.equal(card.classList.contains('card--hidden'), true);
+  await click(item.querySelector('[data-set="watched"]'));
+  assert.equal(item.hidden, true);
   await click(followingTab);
-  assert.equal(card.classList.contains('card--hidden'), true);
+  assert.equal(item.hidden, true);
+});
+
+test('search, format and hide-watched filter the catalogue and are remembered', async () => {
+  const { window, document } = await createSeasonDom({
+    ...fixture(localNoon()),
+    statuses: { 3: 'watched' }
+  });
+  const visible = () => [...document.querySelectorAll('#catalogue > .title')].filter((el) => !el.hidden).map((el) => el.dataset.malId);
+  const search = document.getElementById('title-search');
+  const type = (value) => {
+    search.value = value;
+    search.dispatchEvent(new window.Event('input', { bubbles: true }));
+  };
+  const choose = (id, value) => {
+    const element = document.getElementById(id);
+    if (element.type === 'checkbox') element.checked = value;
+    else element.value = value;
+    element.dispatchEvent(new window.Event('change', { bubbles: true }));
+  };
+
+  assert.deepEqual(visible(), ['1', '2', '3']);
+  type('название 2');
+  assert.deepEqual(visible(), ['2']);
+  type('タイトル1');
+  assert.deepEqual(visible(), ['1']);
+  type('zzz');
+  assert.deepEqual(visible(), []);
+  assert.equal(document.getElementById('noMatch').hidden, false);
+  assert.equal(document.getElementById('noMatch').textContent, 'No titles match. Change the search or the filters.');
+  type('');
+
+  choose('format-filter', 'movie');
+  assert.deepEqual(visible(), ['2']);
+  choose('format-filter', 'other');
+  assert.deepEqual(visible(), ['3']);
+  choose('hide-watched', true);
+  assert.deepEqual(visible(), []);
+  choose('format-filter', 'all');
+  assert.deepEqual(visible(), ['1', '2']);
+
+  choose('sort-select', 'next_ep');
+  assert.deepEqual(JSON.parse(window.localStorage.getItem('anidiary.view')), {
+    tab: 'all', format: 'all', hideWatched: true, sort: 'next_ep'
+  });
+});
+
+test('saved view choices are restored and applied on load', async () => {
+  const { document } = await createSeasonDom({
+    ...fixture(localNoon()),
+    statuses: { 3: 'watched', 2: 'following' },
+    storage: { 'anidiary.view': JSON.stringify({ tab: 'following', format: 'movie', hideWatched: true, sort: 'title' }) }
+  });
+  assert.equal(pressed(document.querySelector('.tab[data-tab="following"]')), 'true');
+  assert.equal(pressed(document.querySelector('.tab[data-tab="all"]')), 'false');
+  assert.equal(document.getElementById('format-filter').value, 'movie');
+  assert.equal(document.getElementById('hide-watched').checked, true);
+  assert.equal(document.getElementById('sort-select').value, 'title');
+  const visible = [...document.querySelectorAll('#catalogue > .title')].filter((el) => !el.hidden);
+  assert.deepEqual(visible.map((el) => el.dataset.malId), ['2']);
+});
+
+test('broken saved preferences fall back to the defaults', async () => {
+  const { document } = await createSeasonDom({
+    ...fixture(localNoon()),
+    storage: { 'anidiary.view': '{not json' }
+  });
+  assert.equal(pressed(document.querySelector('.tab[data-tab="all"]')), 'true');
+  assert.equal(document.getElementById('sort-select').value, 'popularity');
+});
+
+test('sorting by next episode puts upcoming episodes first, soonest first', async () => {
+  const now = localNoon();
+  const seconds = Math.floor(now / 1000);
+  const { window, document } = await createSeasonDom({
+    now,
+    animeList: [
+      anime(1, { popularity: 500 }),
+      anime(2, { popularity: 400, next_ep_at: seconds + 50 * HOUR }),
+      anime(3, { popularity: 300, next_ep_at: seconds - HOUR }),
+      anime(4, { popularity: 200, next_ep_at: seconds + 2 * HOUR })
+    ]
+  });
+  const order = () => [...document.querySelectorAll('#catalogue > .title')].map((el) => el.dataset.malId);
+  assert.deepEqual(order(), ['1', '2', '3', '4']);
+  const select = document.getElementById('sort-select');
+  select.value = 'next_ep';
+  select.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.deepEqual(order(), ['4', '2', '1', '3']);
+  select.value = 'popularity';
+  select.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.deepEqual(order(), ['1', '2', '3', '4']);
+});
+
+test('countdowns update once a minute, aligned to the minute, with the local time as a tooltip', async () => {
+  const now = localNoon() + 20000;
+  const { document, timeouts } = await createSeasonDom(fixture(now));
+  const countdown = document.querySelector('.title[data-mal-id="1"] .cd');
+  assert.equal(countdown.textContent, 'in 1h 0m');
+  assert.ok(countdown.title.length > 0, 'the absolute local day and time is available');
+  assert.deepEqual(timeouts, [60000 - 20000 + 50]);
 });

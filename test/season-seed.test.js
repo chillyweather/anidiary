@@ -298,6 +298,12 @@ test('the modal reads series navigation from relations stored by the sync', asyn
     assert.equal(detail.series_nav.previous.season, 'fall_2025');
     assert.equal(detail.series_nav.next, null);
     assert.equal(detail.related.length, 2);
+    // Related titles stored in our catalogue carry `local` so the dialog can open them.
+    assert.deepEqual(detail.related[0].entries[0].local, {
+      mal_id: 1, title_en: 'Season one', title_jp: null, title_ru: null, season: 'fall_2025', season_label: 'Fall 2025'
+    });
+    assert.equal('local' in detail.related[1].entries[0], false);
+    assert.deepEqual(detail.partners, []);
   });
 });
 

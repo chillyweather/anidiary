@@ -4,6 +4,7 @@ const { csrfProtection } = require('../middleware/csrf');
 const { getCurrentSeason, isValidSeason, getAdjacentSeasons, seasonKey, SEASONS } = require('../domain/seasons');
 const { SYNC_POLICY, retryAt } = require('../domain/sync-policy');
 const { getCatalog } = require('../locales');
+const titleItem = require('../../public/js/title-item');
 
 const SEED_REFRESH_SECONDS = 10;
 
@@ -22,7 +23,9 @@ function createSeasonRouter(repository, {
   syncService, getCurrent = getCurrentSeason, now = () => Date.now(), policy = SYNC_POLICY
 } = {}) {
 const router = express.Router();
-const { getAnimeBySeason, getUserAnimeStatus, getTabAnimeForUser, getSyncState } = repository;
+const {
+  getAnimeBySeason, getUserAnimeStatus, getTabAnimeForUser, getSyncState, getOtherUsersStatuses
+} = repository;
 const nowSeconds = () => Math.floor(now() / 1000);
 
 // A season can be seeded from a page view when it is empty, was never synced
@@ -56,7 +59,7 @@ router.get('/', (req, res) => {
 
 router.get('/season/:year/:season', requireLogin, (req, res) => {
   const target = parseSeasonParams(req.params);
-  if (!target) return res.status(400).render('error', { error: 'Invalid season URL' });
+  if (!target) return res.status(400).render('error', { error: 'That season address is not valid. Season addresses look like /season/2026/fall.' });
   const { year, season, key: seasonParam } = target;
 
   const animeList = getAnimeBySeason(seasonParam);
@@ -69,6 +72,13 @@ router.get('/season/:year/:season', requireLogin, (req, res) => {
     statusMap.set(row.mal_id, row.status);
   }
 
+  // Other household members' states, shown read-only as initial chips.
+  const partnerStatuses = new Map();
+  for (const row of getOtherUsersStatuses(req.session.userId)) {
+    if (!partnerStatuses.has(row.mal_id)) partnerStatuses.set(row.mal_id, []);
+    partnerStatuses.get(row.mal_id).push({ username: row.username, status: row.status });
+  }
+
   const adjacentSeasons = getAdjacentSeasons(year, season);
   const trackedAnimeOutsideSeason = tabAnime.filter((anime) => anime.season !== seasonParam);
   const ui = getCatalog(req.session.langPref);
@@ -77,6 +87,9 @@ router.get('/season/:year/:season', requireLogin, (req, res) => {
     animeList,
     trackedAnimeOutsideSeason,
     userStatuses: statusMap,
+    partnerStatuses,
+    nowSeconds: nowSeconds(),
+    titleItem,
     year,
     season,
     adjacentSeasons,
@@ -97,7 +110,7 @@ router.get('/season/:year/:season', requireLogin, (req, res) => {
 // once per manualRetryGap per season (measured from the last attempt).
 router.post('/season/:year/:season/retry', requireLogin, csrfProtection, (req, res) => {
   const target = parseSeasonParams(req.params);
-  if (!target) return res.status(400).render('error', { error: 'Invalid season URL' });
+  if (!target) return res.status(400).render('error', { error: 'That season address is not valid. Season addresses look like /season/2026/fall.' });
 
   if (isSeedable(target) && !syncService.isSyncing(target.year, target.season)) {
     const syncState = getSyncState(target.key);

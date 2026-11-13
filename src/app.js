@@ -27,8 +27,8 @@ function createApp({
       'Content-Security-Policy': [
         "default-src 'self'", "base-uri 'self'", "object-src 'none'", "frame-ancestors 'none'",
         "form-action 'self'", "script-src 'self'",
-        "style-src 'self' https://fonts.googleapis.com",
-        "font-src 'self' https://fonts.gstatic.com",
+        "style-src 'self'",
+        "font-src 'self'",
         "img-src 'self' data: https://cdn.myanimelist.net https://s4.anilist.co https://shikimori.io",
         "connect-src 'self'"
       ].join('; '),
@@ -63,7 +63,7 @@ function createApp({
     }
   });
 
-  // /css and /js are linked with a content hash (`asset()` in views) and cached
+  // /css, /js and /fonts are linked with a content hash (`asset()` in views) and cached
   // for a year when the hash matches; anything else revalidates with the ETag.
   const publicDir = path.join(__dirname, '../public');
   const assets = createAssetVersions(publicDir, { watch: !isProduction });
@@ -71,6 +71,7 @@ function createApp({
   const versionedStatic = { setHeaders: assets.setCacheHeaders };
   app.use('/css', express.static(path.join(publicDir, 'css'), versionedStatic));
   app.use('/js', express.static(path.join(publicDir, 'js'), versionedStatic));
+  app.use('/fonts', express.static(path.join(publicDir, 'fonts'), versionedStatic));
   app.use(express.static(publicDir, { maxAge: '1d' }));
 
   app.use(session({
@@ -104,10 +105,10 @@ function createApp({
   app.use('/', createSeasonRouter(repository, { syncService, now }));
   app.use('/api', createApiRouter(repository));
 
-  app.use((req, res) => res.status(404).render('error', { error: 'Page not found' }));
+  app.use((req, res) => res.status(404).render('error', { error: 'This page does not exist.' }));
   app.use((err, req, res, next) => {
     console.error('Error:', err);
-    res.status(500).render('error', { error: 'Something went wrong' });
+    res.status(500).render('error', { error: 'The server hit an error while loading this page. Try again in a minute.' });
   });
 
   return app;
