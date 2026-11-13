@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="<%= ui.code %>">
-<%- include('partials/head', { title: ui.seasons[season] + ' ' + year, csrfToken }) %>
+<%- include('partials/head', { title: ui.seasons[season] + ' ' + year, csrfToken, refresh: typeof refresh !== 'undefined' ? refresh : null }) %>
 <body>
   <%- include('partials/navigation', { ui, user, year, season, adjacentSeasons, csrfToken }) %>
 
@@ -14,6 +14,7 @@
       <div class="controls__sort">
         <label><%= ui.sortBy %></label>
         <select id="sort-select">
+          <option value="popularity" selected><%= ui.popularity %></option>
           <option value="score_mal"><%= ui.malScore %></option>
           <option value="score_anilist"><%= ui.anilistScore %></option>
           <option value="score_shiki"><%= ui.shikimoriScore %></option>
@@ -22,6 +23,26 @@
         </select>
       </div>
     </div>
+
+    <% const pageSeedState = typeof seedState !== 'undefined' ? seedState : null; %>
+    <% if (pageSeedState === 'pending') { %>
+      <p class="season-state" role="status"><%= ui.seasonFetching %></p>
+    <% } else if (pageSeedState === 'failed') { %>
+      <div class="season-state season-state--failed" role="status">
+        <p>
+          <%= ui.seasonFetchFailed %>
+          <% if (typeof retryInMinutes !== 'undefined' && retryInMinutes) { %>
+            <time datetime="<%= retryAtIso %>"><%= ui.seasonRetryIn.replace('{minutes}', retryInMinutes) %></time>
+          <% } %>
+        </p>
+        <form method="POST" action="/season/<%= year %>/<%= season %>/retry">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button type="submit" class="btn"><%= ui.retry %></button>
+        </form>
+      </div>
+    <% } else if (pageSeedState === 'empty') { %>
+      <p class="season-state" role="status"><%= ui.seasonEmpty %></p>
+    <% } %>
 
     <div class="card-grid">
       <% for (const anime of animeList) { %>

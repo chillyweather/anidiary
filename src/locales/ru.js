@@ -4,17 +4,21 @@ module.exports = Object.freeze({
   season: 'Сезон', language: 'Язык', logout: 'Выйти', all: 'Все',
   following: 'Мои', sortBy: 'Сортировка:', malScore: 'Оценка MAL',
   anilistScore: 'Оценка AniList', shikimoriScore: 'Оценка Shikimori',
-  nextEpisode: 'Следующая серия', title: 'Название', close: 'Закрыть',
+  nextEpisode: 'Следующая серия', title: 'Название', popularity: 'Популярность', close: 'Закрыть',
   follow: 'Отслеживать', jellyfin: 'Jellyfin', watching: 'Смотрю', watched: 'Просмотрено',
   released: 'Вышло', notAired: 'Не вышло', tba: 'Неизвестно',
   episodeShort: 'сер.', episode: 'Серия',
   episodeForms: ['серия', 'серии', 'серий'], showMore: 'Подробнее', loading: 'Загрузка деталей...',
   noDetails: 'Дополнительная информация отсутствует.', loadDetailsFailed: 'Не удалось загрузить детали. Попробуйте ещё раз.',
+  seasonFetching: 'Загружаем этот сезон из баз аниме. Страница обновится сама.',
+  seasonFetchFailed: 'Сейчас не удалось загрузить этот сезон.', retry: 'Повторить',
+  seasonRetryIn: 'Новая попытка будет автоматически примерно через {minutes} мин.',
+  seasonEmpty: 'Для этого сезона пока нет аниме.',
   previousSeries: 'Предыдущее', nextSeries: 'Следующее', relatedSeries: 'Связанные аниме',
   countdown: { days: 'через {days} д. {hours} ч.', hours: 'через {hours} ч. {minutes} мин.', minutes: 'через {minutes} мин.' },
   airingStatuses: {
     'Finished Airing': 'Завершено', 'Currently Airing': 'Выходит',
-    'Not yet aired': 'Ещё не вышло', Cancelled: 'Отменено'
+    'Not yet aired': 'Ещё не вышло', Cancelled: 'Отменено', 'On Hiatus': 'Перерыв'
   },
   relations: {
     adaptation: 'Адаптация', 'alternative setting': 'Альтернативный мир',

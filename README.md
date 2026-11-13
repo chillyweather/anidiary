@@ -2,7 +2,7 @@
 
 Personal anime release calendar & viewing tracker for me and my wife.
 
-Server-rendered with EJS, backed by SQLite, syncing metadata from Jikan, AniList, and Shikimori.
+Server-rendered with EJS, backed by SQLite, syncing metadata from AniList, Jikan, and Shikimori.
 
 ## Quick Start
 
@@ -36,7 +36,9 @@ leave it unset when clients connect directly.
 - **Viewing tracker** — mark a personal state as `following` or `watched`, independently from shared Jellyfin availability
 - **Multi-language titles** — toggle between English, Japanese, and Russian titles (Shikimori for RU)
 - **Three-score comparison** — MAL, AniList, and Shikimori ratings side by side
-- **Auto-sync** — countdowns refresh every 6h, full season sync every 24h
+- **Auto-sync** — a background scheduler keeps the current, next, and (while still
+  airing) previous season fresh, refreshes countdowns soon after each episode airs,
+  and fetches a never-synced season the first time someone opens it
 
 ## Stack
 
@@ -51,11 +53,36 @@ leave it unset when clients connect directly.
 
 ## Data Sources
 
-- **Jikan** (primary) — seasonal catalog, MAL scores, episode counts
-- **AniList** — next airing timestamps, AniList scores
-- **Shikimori** — Russian titles/synopses, Shikimori scores
+- **AniList** (catalogue) — season list, titles, English synopsis, posters, episode
+  counts, airing status and next-episode countdowns, AniList scores, format,
+  popularity, and related series
+- **Jikan** (optional enricher) — MAL scores and broadcast day; fallback for titles,
+  synopsis, and posters, and for the season list when AniList is down
+- **Shikimori** (enricher, GraphQL on `shikimori.io`) — Russian titles/synopses,
+  Shikimori scores
 
-All merged by **MAL ID** as the universal key.
+All merged by **MAL ID** as the universal key. A provider that fails never erases
+stored data; when AniList answers that a title has no next episode, its countdown
+is cleared. See `docs/adr/0002-catalogue-source-and-sync-scheduling.md`.
+
+## Sync Scheduling
+
+The server ticks 30 seconds after startup and then every 10 minutes, running at
+most one overdue job: the current season after 12h, countdowns every 6h (or within
+30 minutes of an episode airing), the next season after 24h, and the previous
+season after 24h while it still has airing titles. Incomplete or failed syncs are
+retried after 1h with backoff up to 6h. Season syncs run one at a time through a
+single queue shared with page views and the CLI. Each run is recorded in the
+`sync_state` table, so restarts do not reset the schedule.
+
+## Scripts
+
+- `npm run seed [year season]` — sync one season (default: the current season).
+- `node scripts/seed-all-seasons.js [FROM_YEAR FROM_SEASON [TO_YEAR TO_SEASON]] [--force]`
+  — backfill a range (default: winter 2009 to the current season), skipping
+  seasons already synced completely according to `sync_state`; requests are spaced
+  for AniList's 30 requests/minute limit.
+- `npm run migrate` — apply database migrations.
 
 ## Project Structure
 
@@ -63,13 +90,14 @@ All merged by **MAL ID** as the universal key.
 anidiary/
 ├── server.js                 # Executable bootstrap
 ├── scripts/
-│   └── seed.js               # CLI: seed current season data
+│   ├── seed.js               # CLI: sync one season (default: current)
+│   └── seed-all-seasons.js   # CLI: backfill a range of seasons
 ├── public/
 │   ├── css/style.css
 │   └── js/app.js             # countdowns, status toggles, sorting
 └── src/
     ├── app.js                # Side-effect-free Express application factory
-    ├── scheduler.js          # Explicit background timer lifecycle
+    ├── scheduler.js          # Staleness-driven background sync scheduler
     ├── db/
     │   ├── db.js             # SQLite init + helpers
     │   └── schema.sql

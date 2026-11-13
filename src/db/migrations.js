@@ -71,6 +71,31 @@ const migrations = [
         CREATE INDEX idx_user_anime_status ON user_anime(user_id, status);
       `);
     }
+  },
+  {
+    version: 4,
+    name: 'store format and popularity, track synchronization state',
+    up(db) {
+      db.exec(`
+        ALTER TABLE anime ADD COLUMN format TEXT
+          CHECK(format IS NULL OR format IN ('tv', 'tv_short', 'movie', 'ova', 'ona', 'special', 'music'));
+        ALTER TABLE anime ADD COLUMN popularity INTEGER;
+
+        -- One row per scheduled job: a season key such as 'fall_2026', or 'countdowns'.
+        -- last_success_at is the last complete run, so "ever synced" and "overdue"
+        -- are single-row lookups.
+        CREATE TABLE sync_state (
+          job                  TEXT PRIMARY KEY,
+          last_attempt_at      INTEGER NOT NULL,
+          last_success_at      INTEGER,
+          last_status          TEXT NOT NULL CHECK(last_status IN ('complete', 'partial', 'failed')),
+          consecutive_failures INTEGER NOT NULL DEFAULT 0,
+          last_error           TEXT
+        );
+
+        CREATE INDEX idx_anime_airing ON anime(airing_status, next_ep_at);
+      `);
+    }
   }
 ];
 

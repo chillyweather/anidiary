@@ -348,7 +348,7 @@ function renderModalData(data, userStatus) {
   }
   if (data.score_shiki) {
     scores.innerHTML += `
-      <a class="modal__score-item" href="https://shikimori.one/animes/${data.mal_id}" target="_blank" rel="noopener">
+      <a class="modal__score-item" href="https://shikimori.io/animes/${data.mal_id}" target="_blank" rel="noopener">
         <span class="modal__score-label">Shikimori</span>
         <span class="modal__score-value modal__score-value--shiki">${parseFloat(data.score_shiki).toFixed(1)}</span>
       </a>`;
@@ -612,6 +612,7 @@ function initSorting() {
              - (parseInt(b.dataset.nextEpAt, 10) || 9999999999);
       }
       const scoreMap = {
+        popularity:    'popularity',
         score_mal:     'scoreMal',
         score_anilist: 'scoreAnilist',
         score_shiki:   'scoreShiki'

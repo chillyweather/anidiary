@@ -9,8 +9,8 @@ const { createApiRouter } = require('./routes/api');
 const { ensureCsrfToken } = require('./middleware/csrf');
 
 function createApp({
-  repository, sessionSecret, isProduction = false, trustProxy = false, providers,
-  sessionStore, registrationOpen, authRateLimitMax
+  repository, sessionSecret, isProduction = false, trustProxy = false, syncService,
+  sessionStore, registrationOpen, authRateLimitMax, now
 }) {
   if (!repository) throw new Error('A repository is required');
   if (!sessionSecret) throw new Error('A session secret is required');
@@ -28,7 +28,7 @@ function createApp({
         "form-action 'self'", "script-src 'self'",
         "style-src 'self' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
-        "img-src 'self' data: https://cdn.myanimelist.net https://s4.anilist.co https://shikimori.one",
+        "img-src 'self' data: https://cdn.myanimelist.net https://s4.anilist.co https://shikimori.io",
         "connect-src 'self'"
       ].join('; '),
       'Cross-Origin-Opener-Policy': 'same-origin',
@@ -94,8 +94,8 @@ function createApp({
     registrationOpen: registrationOpen ?? !isProduction,
     authRateLimitMax
   }));
-  app.use('/', createSeasonRouter(repository));
-  app.use('/api', createApiRouter(repository, providers));
+  app.use('/', createSeasonRouter(repository, { syncService, now }));
+  app.use('/api', createApiRouter(repository));
 
   app.use((req, res) => res.status(404).render('error', { error: 'Page not found' }));
   app.use((err, req, res, next) => {

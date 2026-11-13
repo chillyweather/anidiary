@@ -4,6 +4,9 @@
   <% if (typeof csrfToken !== 'undefined' && csrfToken) { %>
     <meta name="csrf-token" content="<%= csrfToken %>">
   <% } %>
+  <% if (typeof refresh !== 'undefined' && refresh) { %>
+    <meta http-equiv="refresh" content="<%= refresh.seconds %>;url=<%= refresh.url %>">
+  <% } %>
   <title><%= title ? title + ' - anidiary' : 'anidiary' %></title>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="preconnect" href="https://fonts.googleapis.com">

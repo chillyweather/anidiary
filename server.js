@@ -35,9 +35,10 @@ function main() {
   repository.init();
 
   const syncService = createSyncService({ repository });
-  const scheduler = createScheduler({ syncService, getCurrentSeason });
+  const scheduler = createScheduler({ syncService, repository, getCurrentSeason });
   const app = createApp({
     repository,
+    syncService,
     sessionSecret: loadSessionSecret(),
     isProduction,
     trustProxy: parseTrustProxy(process.env.TRUST_PROXY),

@@ -557,6 +557,13 @@ body {
   border-color: var(--border-focus);
 }
 
+/* ─── Season state (first-visit fetch) ─────────────────── */
+
+.season-state {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+}
+
 /* ─── Card Grid ────────────────────────────────────────── */
 
 .card-grid {

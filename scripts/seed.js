@@ -24,7 +24,7 @@ async function main() {
   
   try {
     const result = await syncSeason(year, season);
-    console.log(`\nDone! Inserted ${result.inserted} anime.`);
+    console.log(`\nDone! Upserted ${result.inserted} anime (status: ${result.status}).`);
     if (result.errors > 0) {
       console.log(`Errors: ${result.errors}`);
     }

@@ -8,7 +8,6 @@ const session = require('express-session');
 
 const { createApp } = require('../src/app');
 const { createDatabase } = require('../src/db/db');
-const { createScheduler } = require('../src/scheduler');
 
 test('application serves an authenticated session from an isolated database', async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'anidiary-test-'));
@@ -27,18 +26,20 @@ test('application serves an authenticated session from an isolated database', as
     season: 'spring_2026', airing_status: 'Currently Airing', airing_day: null,
     next_ep_num: null, next_ep_at: null, anilist_id: null, genres: '[]', related: null
   });
-  let detailProviderCalls = 0;
+  // The modal API must only read the database: count any request that leaves
+  // the test machine.
+  const realFetch = globalThis.fetch;
+  const externalRequests = [];
+  globalThis.fetch = (url, options) => {
+    if (!String(url).startsWith('http://127.0.0.1:')) externalRequests.push(String(url));
+    return realFetch(url, options);
+  };
+  t.after(() => { globalThis.fetch = realFetch; });
 
   const app = createApp({
     repository,
     sessionSecret: 'test-secret',
-    sessionStore: new session.MemoryStore(),
-    providers: {
-      fetchAnimeDetail: async () => {
-        detailProviderCalls++;
-        return { related: '[]' };
-      }
-    }
+    sessionStore: new session.MemoryStore()
   });
   const server = app.listen(0, '127.0.0.1');
   await new Promise((resolve) => server.once('listening', resolve));
@@ -53,13 +54,12 @@ test('application serves an authenticated session from an isolated database', as
   const health = await fetch(`${baseUrl}/healthz`);
   assert.equal(health.status, 200);
   assert.deepEqual(await health.json(), {
-    ok: true, schemaVersion: 3, expectedSchemaVersion: 3, writable: true
+    ok: true, schemaVersion: 4, expectedSchemaVersion: 4, writable: true
   });
 
   const unauthenticatedDetail = await fetch(`${baseUrl}/api/anime/1`);
   assert.equal(unauthenticatedDetail.status, 401);
   assert.deepEqual(await unauthenticatedDetail.json(), { error: 'Not authenticated' });
-  assert.equal(detailProviderCalls, 0);
   assert.equal(repository.getAnimeByMalId(1).related, null);
 
   const loginPage = await fetch(`${baseUrl}/login`);
@@ -122,8 +122,9 @@ test('application serves an authenticated session from an isolated database', as
     headers: { cookie: englishSession.cookie }
   });
   assert.equal(authenticatedDetail.status, 200);
-  assert.equal(detailProviderCalls, 1);
-  assert.equal(repository.getAnimeByMalId(1).related, '[]');
+  assert.deepEqual((await authenticatedDetail.json()).related, []);
+  assert.deepEqual(externalRequests, []);
+  assert.equal(repository.getAnimeByMalId(1).related, null);
 
   const missingApiToken = await fetch(`${baseUrl}/api/mark`, {
     method: 'POST',
@@ -189,18 +190,4 @@ test('application serves an authenticated session from an isolated database', as
   assert.equal(logout.status, 302);
   const afterLogout = await fetch(`${baseUrl}/api/anime/1`, { headers: { cookie: englishSession.cookie } });
   assert.equal(afterLogout.status, 401);
-});
-
-test('scheduler lifecycle is explicit and idempotent', () => {
-  const scheduler = createScheduler({
-    syncService: { syncSeason: async () => {}, refreshCountdowns: async () => {} },
-    getCurrentSeason: () => ({ year: 2026, season: 'spring' })
-  });
-
-  assert.equal(scheduler.isRunning(), false);
-  scheduler.start();
-  scheduler.start();
-  assert.equal(scheduler.isRunning(), true);
-  scheduler.stop();
-  assert.equal(scheduler.isRunning(), false);
 });

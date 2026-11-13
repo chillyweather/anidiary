@@ -1,5 +1,4 @@
 const express = require('express');
-const { fetchAnimeDetail } = require('../services/jikan');
 const { formatSeasonKey } = require('../domain/seasons');
 const { getCatalog } = require('../locales');
 const { requireJsonLogin } = require('../middleware/auth');
@@ -70,14 +69,14 @@ function normalizeAnimeForModal(anime, related, userStatus, getAnimeByMalId, cat
   };
 }
 
-function createApiRouter(repository, providers = {}) {
+// Reads only the database: relations are stored by the season sync, so opening
+// the modal never waits on a third-party provider.
+function createApiRouter(repository) {
 const router = express.Router();
 const {
   setUserAnimeStatus, removeUserAnimeStatus, getAnimeByMalId,
-  updateAnimeRelated, getUserAnimeStatusByMalId, updateUserLangPref,
-  setAnimeJellyfinAvailability
+  getUserAnimeStatusByMalId, updateUserLangPref, setAnimeJellyfinAvailability
 } = repository;
-const fetchDetail = providers.fetchAnimeDetail || fetchAnimeDetail;
 
 router.post('/mark', requireJsonLogin, csrfProtection, async (req, res) => {
   try {
@@ -118,7 +117,7 @@ router.post('/mark', requireJsonLogin, csrfProtection, async (req, res) => {
   }
 });
 
-router.get('/anime/:mal_id', requireJsonLogin, async (req, res) => {
+router.get('/anime/:mal_id', requireJsonLogin, (req, res) => {
   try {
     const malId = parseInt(req.params.mal_id, 10);
     if (Number.isNaN(malId) || malId <= 0) {
@@ -130,18 +129,7 @@ router.get('/anime/:mal_id', requireJsonLogin, async (req, res) => {
       return res.status(404).json({ error: 'Anime not found' });
     }
 
-    let related = parseStoredJsonArray(anime.related, { field: 'related', malId });
-
-    if (anime.related == null || anime.related === '') {
-      try {
-        const detail = await fetchDetail(malId);
-        const rawRelated = detail?.related || '[]';
-        related = parseStoredJsonArray(rawRelated, { field: 'related', malId });
-        updateAnimeRelated(malId, rawRelated);
-      } catch (detailErr) {
-        console.error(`Failed to lazily fetch anime relations for ${malId}:`, detailErr);
-      }
-    }
+    const related = parseStoredJsonArray(anime.related, { field: 'related', malId });
 
     const userStatusRow = req.session?.userId
       ? getUserAnimeStatusByMalId(req.session.userId, malId)

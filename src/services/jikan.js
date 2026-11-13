@@ -1,5 +1,6 @@
 const { createRateLimiter } = require('./rateLimiter');
 const { isValidSeason, seasonKey } = require('../domain/seasons');
+const { normalizeFormat } = require('../domain/formats');
 
 const BASE_URL = 'https://api.jikan.moe/v4';
 const rateLimitedFetch = createRateLimiter(350);
@@ -47,7 +48,7 @@ async function fetchSeasonWith(fetchImpl, year, season) {
           airing_status: item.status,
           airing_day: item.broadcast?.day?.toLowerCase() || null,
           genres: JSON.stringify(item.genres?.map(g => g.name) || []),
-          related: null
+          format: normalizeFormat(item.type)
         });
       }
       
@@ -64,27 +65,4 @@ async function fetchSeasonWith(fetchImpl, year, season) {
   return { records: animeList, complete: errors.length === 0, errors };
 }
 
-async function fetchAnimeDetail(malId) {
-  const url = `${BASE_URL}/anime/${malId}/full`;
-  console.log(`[Jikan] Fetching detail for ${malId}`);
-  
-  const res = await rateLimitedFetch(url);
-  if (!res.ok) {
-    throw new Error(`Jikan API error: ${res.status}`);
-  }
-  const data = await res.json();
-  
-  const relations = data.data?.relations || [];
-  const related = relations.map(r => ({
-    relation: r.relation,
-    entries: r.entry.map(e => ({
-      mal_id: e.mal_id,
-      type: e.type,
-      title: e.name
-    }))
-  }));
-
-  return { related: JSON.stringify(related) };
-}
-
-module.exports = { fetchSeason, fetchSeasonWith, fetchAnimeDetail };
+module.exports = { fetchSeason, fetchSeasonWith };
