@@ -29,6 +29,19 @@ test('workflow actions are pinned and CI gates tests, audit, and smoke checks', 
   assert.match(ci, /Smoke check/);
 });
 
+test('CI tests every supported Node version declared by the project', () => {
+  const ci = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const nvmrc = fs.readFileSync(path.join(root, '.nvmrc'), 'utf8').trim();
+
+  assert.equal(pkg.engines.node, '>=20');
+  assert.equal(nvmrc, '24');
+  const matrix = ci.match(/node-version: \[([^\]]+)\]/);
+  assert.ok(matrix, 'CI runs tests on a Node version matrix');
+  assert.deepEqual(matrix[1].split(',').map((version) => version.trim()), ['20', nvmrc]);
+  assert.match(ci, /node-version: \$\{\{ matrix\.node-version \}\}[\s\S]*?npm test/);
+});
+
 test('deployment pins SSH trust and prepares recovery before restart', () => {
   const workflow = fs.readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
   const release = fs.readFileSync(path.join(root, 'scripts/deploy-release.sh'), 'utf8');

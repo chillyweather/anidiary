@@ -76,7 +76,10 @@ function createScheduler({
   // Runs at most one overdue job. Concurrent calls share the run in progress.
   function tick() {
     if (running) return running;
-    running = (async () => {
+    // Selection starts on a later microtask so `running` is already assigned
+    // when an idle tick finishes; otherwise it would keep the settled promise
+    // and no later tick would ever select a job again.
+    const run = Promise.resolve().then(async () => {
       let job = null;
       try {
         const nowMs = now();
@@ -90,11 +93,12 @@ function createScheduler({
       } catch (error) {
         logger.error(`[Scheduler] ${job ? job.key : 'tick'} failed: ${error.message}`);
         return job;
-      } finally {
-        running = null;
       }
-    })();
-    return running;
+    }).finally(() => {
+      if (running === run) running = null;
+    });
+    running = run;
+    return run;
   }
 
   return {

@@ -6,7 +6,8 @@ const { SQLiteSessionStore } = require('./session-store');
 const { createAuthRouter } = require('./routes/auth');
 const { createSeasonRouter } = require('./routes/season');
 const { createApiRouter } = require('./routes/api');
-const { ensureCsrfToken } = require('./middleware/csrf');
+const { exposeCsrfToken } = require('./middleware/csrf');
+const { createAssetVersions } = require('./assets');
 
 function createApp({
   repository, sessionSecret, isProduction = false, trustProxy = false, syncService,
@@ -62,11 +63,15 @@ function createApp({
     }
   });
 
+  // /css and /js are linked with a content hash (`asset()` in views) and cached
+  // for a year when the hash matches; anything else revalidates with the ETag.
   const publicDir = path.join(__dirname, '../public');
-  const noCache = (res) => res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-  app.use('/css', express.static(path.join(publicDir, 'css'), { setHeaders: noCache }));
-  app.use('/js', express.static(path.join(publicDir, 'js'), { setHeaders: noCache }));
-  app.use(express.static(publicDir));
+  const assets = createAssetVersions(publicDir, { watch: !isProduction });
+  app.locals.asset = assets.url;
+  const versionedStatic = { setHeaders: assets.setCacheHeaders };
+  app.use('/css', express.static(path.join(publicDir, 'css'), versionedStatic));
+  app.use('/js', express.static(path.join(publicDir, 'js'), versionedStatic));
+  app.use(express.static(publicDir, { maxAge: '1d' }));
 
   app.use(session({
     store: sessionStore || new SQLiteSessionStore(repository.db),
@@ -83,7 +88,9 @@ function createApp({
     }
   }));
 
-  app.use(ensureCsrfToken);
+  // Only pages with a form (GET /login, /register) start an anonymous session;
+  // see issueCsrfToken. Everything else just exposes an existing token.
+  app.use(exposeCsrfToken);
 
   app.use((req, res, next) => {
     res.locals.user = req.session;

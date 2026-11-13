@@ -10,6 +10,13 @@ function loadScript(window, file) {
   window.eval(fs.readFileSync(path.join(root, file), 'utf8'));
 }
 
+// Closing each window clears its timers (the 5 s action-error timeout), which
+// otherwise keep the test process alive after the last test.
+const openWindows = [];
+test.afterEach(() => {
+  while (openWindows.length) openWindows.pop().close();
+});
+
 function createDom({ fetchHandler } = {}) {
   const dom = new JSDOM(`<!DOCTYPE html>
     <html>
@@ -107,6 +114,7 @@ function createDom({ fetchHandler } = {}) {
   loadScript(dom.window, 'public/js/app.js');
   dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded', { bubbles: true }));
 
+  openWindows.push(dom.window);
   return { window: dom.window, document: dom.window.document, fetchCalls };
 }
 

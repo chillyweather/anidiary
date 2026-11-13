@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
-const { csrfProtection, newCsrfToken } = require('../middleware/csrf');
+const { csrfProtection, issueCsrfToken, newCsrfToken } = require('../middleware/csrf');
 
 const BCRYPT_ROUNDS = 12;
 
@@ -47,6 +47,7 @@ router.get('/login', (req, res) => {
   if (req.session && req.session.userId) {
     return res.redirect('/');
   }
+  issueCsrfToken(req, res);
   res.render('login', { error: null });
 });
 
@@ -85,6 +86,7 @@ router.get('/register', (req, res) => {
   if (req.session && req.session.userId) {
     return res.redirect('/');
   }
+  issueCsrfToken(req, res);
   res.render('register', { error: null });
 });
 

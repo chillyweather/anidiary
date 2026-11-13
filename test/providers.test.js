@@ -283,3 +283,39 @@ test('rate-limited fetches return a fully read body', async () => {
   assert.equal(res.ok, true);
   assert.deepEqual(await res.json(), { a: 1 });
 });
+
+test('AniList stops a season whose pagination never ends and reports it incomplete', async () => {
+  let requests = 0;
+  const { client } = anilistClient(async () => {
+    requests++;
+    return response(200, seasonPage([], true));
+  });
+
+  const result = await client.fetchSeason('fall', 2026);
+
+  assert.equal(result.complete, false);
+  assert.match(result.errors[0].message, /pagination did not end/);
+  assert.equal(requests, 40);
+});
+
+test('Jikan stops a season whose pagination never ends and reports it incomplete', async () => {
+  const { fetchSeasonWith } = require('../src/services/jikan');
+  const originalLog = console.log;
+  const originalError = console.error;
+  console.log = () => {};
+  console.error = () => {};
+  let requests = 0;
+  try {
+    const result = await fetchSeasonWith(async () => {
+      requests++;
+      return response(200, { data: [], pagination: { has_next_page: true } });
+    }, 2026, 'fall');
+
+    assert.equal(result.complete, false);
+    assert.match(result.errors[0].message, /pagination did not end/);
+    assert.equal(requests, 40);
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+  }
+});

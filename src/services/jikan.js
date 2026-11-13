@@ -3,6 +3,8 @@ const { isValidSeason, seasonKey } = require('../domain/seasons');
 const { normalizeFormat } = require('../domain/formats');
 
 const BASE_URL = 'https://api.jikan.moe/v4';
+// A season is a few pages; a provider that never ends pagination must not hold the sync queue.
+const MAX_SEASON_PAGES = 40;
 const rateLimitedFetch = createRateLimiter(350);
 
 async function fetchSeason(year, season) {
@@ -25,6 +27,7 @@ async function fetchSeasonWith(fetchImpl, year, season) {
     console.log(`[Jikan] Fetching ${url}`);
     
     try {
+      if (page > MAX_SEASON_PAGES) throw new Error(`Jikan pagination did not end after ${MAX_SEASON_PAGES} pages`);
       const res = await fetchImpl(url);
       if (!res.ok) {
         throw new Error(`Jikan API error: ${res.status}`);

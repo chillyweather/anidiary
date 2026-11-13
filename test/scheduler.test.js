@@ -222,3 +222,49 @@ test('season backfill takes its range from arguments and defaults to the current
     ['fall_2025', 'winter_2026', 'spring_2026']
   );
 });
+
+test('an idle tick does not stop later ticks from selecting jobs', async () => {
+  const states = freshStates();
+  const calls = [];
+  let nowSeconds = NOW;
+  const scheduler = createScheduler({
+    syncService: {
+      syncSeason: async (year, season) => { calls.push(`${season}_${year}`); },
+      refreshCountdowns: async () => { calls.push('countdowns'); }
+    },
+    repository: fakeRepository({ states }),
+    getCurrentSeason,
+    now: () => nowSeconds * 1000,
+    logger: { log() {}, error() {} }
+  });
+
+  assert.equal(await scheduler.tick(), null);
+  nowSeconds += 48 * HOUR;
+  const job = await scheduler.tick();
+  assert.equal(job.key, 'fall_2026');
+  assert.deepEqual(calls, ['fall_2026']);
+});
+
+test('a tick whose job selection throws does not stop later ticks', async () => {
+  const states = freshStates({ fall_2026: undefined });
+  let broken = true;
+  const repository = fakeRepository({ states });
+  const getSyncState = repository.getSyncState;
+  repository.getSyncState = (job) => {
+    if (broken) throw new Error('database is locked');
+    return getSyncState(job);
+  };
+  const calls = [];
+  const scheduler = createScheduler({
+    syncService: { syncSeason: async () => { calls.push('season'); }, refreshCountdowns: async () => {} },
+    repository,
+    getCurrentSeason,
+    now: () => NOW * 1000,
+    logger: { log() {}, error() {} }
+  });
+
+  assert.equal(await scheduler.tick(), null);
+  broken = false;
+  await scheduler.tick();
+  assert.deepEqual(calls, ['season']);
+});

@@ -30,6 +30,16 @@ characters and no more than 72 UTF-8 bytes. Set `TRUST_PROXY=1` for the document
 single reverse-proxy deployment, or provide a comma-separated trusted subnet list;
 leave it unset when clients connect directly.
 
+Views link CSS and JS through `asset('/js/app.js')`, which appends a content hash
+(`?v=<hash>`); a request with the current hash is cached for a year as immutable,
+anything else is `no-cache` and revalidates by ETag. Hashes are computed at
+startup, and recomputed on file change outside production. Other files in
+`public/` are cached for a day.
+
+Sessions are stored in SQLite only when needed: an anonymous visitor gets one (for
+the form's CSRF token) only from `GET /login` or `GET /register`, and it expires
+after 1 hour; logging in replaces it with a 30-day session.
+
 ## What It Does
 
 - **Seasonal anime calendar** — see what's airing this season with countdowns to next episodes
@@ -44,7 +54,7 @@ leave it unset when clients connect directly.
 
 | Layer | Tech |
 |-------|------|
-| Runtime | Node.js 18+ |
+| Runtime | Node.js 20+ (`.nvmrc`: 24; CI tests 20 and 24) |
 | Server | Express 4 |
 | Database | SQLite (`better-sqlite3`) |
 | Auth | `bcrypt` + `express-session` |
@@ -97,12 +107,14 @@ anidiary/
 │   └── js/app.js             # countdowns, status toggles, sorting
 └── src/
     ├── app.js                # Side-effect-free Express application factory
+    ├── assets.js             # Content-hash URLs for /css and /js
     ├── scheduler.js          # Staleness-driven background sync scheduler
     ├── db/
     │   ├── db.js             # SQLite init + helpers
     │   └── schema.sql
     ├── middleware/
-    │   └── auth.js
+    │   ├── auth.js
+    │   └── csrf.js
     ├── routes/
     │   ├── auth.js           # /login, /register, /logout
     │   ├── season.js         # /season/:year/:season
@@ -138,7 +150,13 @@ Deployment requires a protected `SSH_KNOWN_HOSTS` secret containing the pinned h
 key; the runner never discovers trust from the network. Each verified commit is
 staged under `$APP_DIR/releases/<sha>`. Before migration, deployment creates an
 integrity-checked SQLite backup under `$APP_DIR/backups`, and dependency install,
-backup, and migration must all succeed before PM2 reloads.
+backup, and migration must all succeed before PM2 reloads. The `/healthz` smoke
+check is tried `SMOKE_ATTEMPTS` times (default 30), `SMOKE_DELAY_SECONDS` apart
+(default 1). After a successful release only, the script keeps the newest
+`KEEP_RELEASES` (default 5) `releases/<sha>` directories and `KEEP_BACKUPS`
+(default 10) `backups/anidiary-*.db` files by modification time, never deleting the
+current release, the one in `.previous-release`, or this run's backup; a pruning
+error is logged and does not fail the deploy.
 
 For recovery, inspect `$APP_DIR/.previous-release` and the backup path printed in the
 deployment log. Reload the prior code with

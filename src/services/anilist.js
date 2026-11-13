@@ -8,6 +8,8 @@ const REQUEST_TIMEOUT_MS = 15000;
 // AniList currently allows 30 requests/minute; one request every ~2s stays under it.
 const MIN_REQUEST_INTERVAL_MS = 2100;
 const MAX_RETRIES = 3;
+// A season is a few pages; a provider that never ends pagination must not hold the sync queue.
+const MAX_SEASON_PAGES = 40;
 const DEFAULT_RETRY_AFTER_MS = 60000;
 const MAX_RETRY_AFTER_MS = 65000;
 const PAGE_SIZE = 50;
@@ -198,6 +200,7 @@ function createAniListClient({
     while (hasNextPage) {
       logger.log(`[AniList] Fetching ${anilistSeason} ${year}, page ${page}`);
       try {
+        if (page > MAX_SEASON_PAGES) throw new Error(`AniList pagination did not end after ${MAX_SEASON_PAGES} pages`);
         const pageData = await request({ query: SEASON_QUERY, variables: { season: anilistSeason, year, page } });
         if (!Array.isArray(pageData.media) || typeof pageData.pageInfo?.hasNextPage !== 'boolean') {
           throw new Error('AniList Page data is malformed');
