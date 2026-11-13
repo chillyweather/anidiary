@@ -46,7 +46,7 @@
       ];
 
     const children = [
-      anime.poster_url
+      Catalogue.safeImageUrl(anime.poster_url)
         ? el('img', [['class', 'title__poster'], ['src', anime.poster_url], ['alt', ''], ['width', '200'], ['height', '300'], ['loading', eager ? null : 'lazy']])
         : el('span', [['class', 'title__poster']]),
       el('button', [['class', 'title__open'], ['aria-haspopup', 'dialog'],

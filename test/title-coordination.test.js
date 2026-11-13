@@ -238,6 +238,28 @@ test('a detail payload does not overwrite a write that completed after its reque
 
 });
 
+test('a detail response that arrives after the dialog closed cannot undo a newer write on reopening', async () => {
+  const deferred = deferredFetch();
+  const { document, fetchCalls } = await createSeasonDom({ animeList: [anime(1)], fetchHandler: deferred.handler });
+  const item = document.querySelector('.title[data-mal-id="1"]');
+
+  await click(item.querySelector('.title__open'));          // detail request starts
+  await click(item.querySelector('[data-set="watching"]')); // grid write while it is in flight
+  deferred.release(isMark(1), markResponse);
+  await settle();
+  document.getElementById('animeModal').close();            // request is no longer current
+  deferred.release('/api/anime/1', detail(1, { user_status: null })); // older payload, cached
+  await settle();
+  assert.equal(item.dataset.status, 'watching');
+
+  await click(item.querySelector('.title__open'));          // served from the cache
+  await settle();
+  assert.equal(fetchCalls.filter((call) => call.url === '/api/anime/1').length, 1);
+  assert.equal(item.dataset.status, 'watching', 'grid keeps the write');
+  assert.equal(pressed(document.querySelector('#modalActions [data-set="watching"]')), 'true');
+  assert.equal(count(document, 'watching'), '1');
+});
+
 test('a detail payload requested after a write is authoritative', async () => {
   const deferred = deferredFetch();
   const { document } = await createSeasonDom({ animeList: [anime(1)], fetchHandler: deferred.handler });

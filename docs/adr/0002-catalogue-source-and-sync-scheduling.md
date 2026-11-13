@@ -71,8 +71,9 @@ sync.
     that was partial or failed (seasons and countdowns alike) is retried after 1h,
     doubling per consecutive failure up to 6h; this backoff is checked before the
     normal cadence.
-- Season syncs run one at a time through a single queue shared by the scheduler,
-  page views and the CLI.
+- Season syncs run one at a time through a single queue shared by the scheduler
+  and page views. The queue lives in the server process; a CLI seed run is a
+  separate process and is not coordinated with it.
 - Visiting a season with no rows that was never synced successfully queues a
   background sync (at most three seasons may wait) and shows a "fetching" state
   that refreshes itself. After a failure the page shows when the next automatic

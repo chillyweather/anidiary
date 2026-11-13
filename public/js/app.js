@@ -238,7 +238,7 @@
     button.dataset.openId = String(entry.malId);
     button.dataset.status = entry.status;
 
-    if (entry.poster) {
+    if (Catalogue.safeImageUrl(entry.poster)) {
       const image = document.createElement('img');
       image.className = 'slot__thumb';
       image.src = entry.poster;
@@ -515,7 +515,7 @@
     byId('modalTitleJp').textContent = lang === 'jp' || data.title_jp === title ? '' : (data.title_jp || '');
     byId('modalTitleRu').textContent = lang === 'ru' || data.title_ru === title ? '' : (data.title_ru || '');
     const poster = byId('modalPoster');
-    if (data.poster_url) poster.src = data.poster_url;
+    if (Catalogue.safeImageUrl(data.poster_url)) poster.src = data.poster_url;
     else poster.removeAttribute('src');
 
     const synopsisEn = byId('modalSynopsisEn');
@@ -621,10 +621,14 @@
 
   // A detail payload is authoritative except for values written after its
   // request started; those keep the newer value (in the payload and the cache).
-  function reconcile(data, startRevisions) {
+  function keepNewerWrites(data, startRevisions) {
     const state = writeStateFor(data.mal_id);
     if (state.status.revision !== startRevisions.status) data.user_status = state.status.value || null;
     if (state.jellyfin.revision !== startRevisions.jellyfin) data.in_jellyfin = state.jellyfin.value;
+  }
+
+  function reconcile(data, startRevisions) {
+    keepNewerWrites(data, startRevisions);
     setTitleJellyfin(data.mal_id, Boolean(data.in_jellyfin));
     if ((titles.get(data.mal_id)?.status || '') !== (data.user_status || '')) setTitleStatus(data.mal_id, data.user_status || '');
   }
@@ -637,6 +641,9 @@
     navButtons.forEach((button) => { button.disabled = true; });
     try {
       const data = await promise;
+      // Corrected even when the dialog has moved on or closed: the payload is
+      // cached, and a stale one would undo a newer write when it is reopened.
+      keepNewerWrites(data, startRevisions);
       if (!detailLoader.isCurrent(requestId)) return;
       reconcile(data, startRevisions);
       renderDetail(data);

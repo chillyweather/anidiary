@@ -52,9 +52,26 @@ function main() {
     console.log(`anidiary running on http://localhost:${port}`);
   });
 
+  // A sync that is still fetching is abandoned: its only write is one synchronous
+  // transaction, so exiting here cannot leave a season half written, and nothing
+  // touches the database after it is closed. PM2 kills the process 1.6s after
+  // the signal, so the wait for open connections is kept shorter than that.
+  let shuttingDown = false;
   const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     scheduler.stop();
-    server.close(() => repository.close());
+    const finish = () => {
+      try {
+        repository.close();
+      } catch (error) {
+        console.error('Database close failed:', error);
+      }
+      process.exit(0);
+    };
+    server.close(finish);
+    if (typeof server.closeIdleConnections === 'function') server.closeIdleConnections();
+    setTimeout(finish, 1000).unref();
   };
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);

@@ -72,6 +72,8 @@ if [ "$1" = start ]; then
   printf '%s:%s\n' "$2" "$(cat "$DB_PATH")" >> "$EVENT_LOG"
 elif [ "$1" = delete ]; then
   printf 'delete:%s\n' "$2" >> "$EVENT_LOG"
+elif [ "$1" = save ]; then
+  printf 'save\n' >> "$EVENT_LOG"
 fi
 `);
 
@@ -251,4 +253,19 @@ test('an unresolvable previous release skips release pruning without failing the
 
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.ok(fs.existsSync(path.join(fixture.releasesDirectory, sha('2'))));
+});
+
+test('the PM2 process list is saved only for a release that passed its smoke check', (t) => {
+  const failed = createFixture(t, { healthy: false });
+  assert.notEqual(failed.run().status, 0);
+  const failedEvents = fs.readFileSync(failed.eventLog, 'utf8').trim().split('\n');
+  const rollbackStart = failedEvents.findIndex((line) => line.startsWith(path.join(failed.previousDirectory, 'ecosystem.config.js')));
+  assert.ok(rollbackStart > 0, failedEvents.join('\n'));
+  assert.deepEqual(failedEvents.filter((line) => line === 'save').length, 1);
+  assert.equal(failedEvents.indexOf('save') > rollbackStart, true, 'saved after the previous release was restarted');
+
+  const passed = createFixture(t, { healthy: true });
+  assert.equal(passed.run().status, 0);
+  const passedEvents = fs.readFileSync(passed.eventLog, 'utf8').trim().split('\n');
+  assert.equal(passedEvents[passedEvents.length - 1], 'save');
 });

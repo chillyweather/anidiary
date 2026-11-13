@@ -59,7 +59,6 @@ PREVIOUS_RELEASE=$(cat "$APP_DIR/.current-release" 2>/dev/null || printf '%s' "$
 export DB_PATH
 pm2 delete anidiary || true
 pm2 start "$RELEASE_DIR/ecosystem.config.js" --env production --update-env
-pm2 save
 
 # /healthz returns {"ok":true} only when the running code can write the database
 # and its schema version matches the code, so a stale or read-only deploy fails here.
@@ -90,9 +89,14 @@ if [ "$SMOKE_OK" != true ]; then
   if [ -f "$PREVIOUS_RELEASE/ecosystem.config.js" ]; then
     pm2 delete anidiary || true
     pm2 start "$PREVIOUS_RELEASE/ecosystem.config.js" --env production --update-env || true
+    # Without this, a PM2 resurrection would start whatever was saved last.
+    pm2 save || true
   fi
   exit 1
 fi
+
+# Saved only now, so a rejected release is never what PM2 resurrects.
+pm2 save
 
 printf '%s\n' "$PREVIOUS_RELEASE" > "$APP_DIR/.previous-release"
 printf '%s\n' "$RELEASE_DIR" > "$APP_DIR/.current-release"

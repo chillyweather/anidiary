@@ -319,3 +319,22 @@ test('Jikan stops a season whose pagination never ends and reports it incomplete
     console.error = originalError;
   }
 });
+
+test('poster URLs are used only when https or a same-origin path', () => {
+  const { safeImageUrl } = require('../public/js/catalogue');
+  const { titleTree, toHtml } = require('../public/js/title-item');
+  const { getCatalog } = require('../src/locales');
+
+  assert.equal(safeImageUrl('https://cdn.myanimelist.net/a.jpg'), 'https://cdn.myanimelist.net/a.jpg');
+  assert.equal(safeImageUrl('/img/a.jpg'), '/img/a.jpg');
+  for (const url of ['javascript:alert(1)', 'data:image/svg+xml,<svg/>', 'http://example.com/a.jpg', '//example.com/a.jpg', '', null]) {
+    assert.equal(safeImageUrl(url), '');
+  }
+
+  const html = toHtml(titleTree(
+    { mal_id: 1, title_en: 'Title', poster_url: 'javascript:alert(1)' },
+    { ui: getCatalog('en'), nowSeconds: 0 }
+  ));
+  assert.doesNotMatch(html, /<img/);
+  assert.doesNotMatch(html, /javascript:/);
+});

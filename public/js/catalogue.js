@@ -140,7 +140,13 @@
     return `${count} ${forms[index]}`;
   }
 
+  // Poster URLs come from third-party providers: only https or a same-origin path is used.
+  function safeImageUrl(url) {
+    return typeof url === 'string' && /^(https:\/\/|\/(?!\/))/i.test(url) ? url : '';
+  }
+
   return {
+    safeImageUrl,
     FORMAT_GROUPS, TRACKED, normalizeText, searchText, matches, comparator, formatCountdown, groupWeek, dayKey, fill,
     formatEpisodeCount
   };

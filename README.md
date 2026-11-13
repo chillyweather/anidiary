@@ -101,7 +101,9 @@ most one overdue job: the current season after 12h, countdowns every 6h (or with
 30 minutes of an episode airing), the next season after 24h, and the previous
 season after 24h while it still has airing titles. Incomplete or failed syncs are
 retried after 1h with backoff up to 6h. Season syncs run one at a time through a
-single queue shared with page views and the CLI. Each run is recorded in the
+single queue shared with page views. The CLI scripts are a separate process with
+their own queue, so stop the server (or expect overlapping provider calls) when
+backfilling. Each run is recorded in the
 `sync_state` table, so restarts do not reset the schedule.
 
 ## Scripts
